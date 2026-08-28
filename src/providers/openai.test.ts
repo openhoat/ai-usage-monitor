@@ -143,6 +143,31 @@ describe('openaiProvider', () => {
       // Total = 300 cents = $3, budget = $100, percentage = 3%
       expect(result?.overall_percentage).toBe(3)
     })
+
+    test('should use cursor parameter for pagination', async () => {
+      const page1 = {
+        object: 'list',
+        data: [],
+        has_more: true,
+        next_page: 'page_abc123',
+      }
+      const page2 = {
+        object: 'list',
+        data: [],
+        has_more: false,
+      }
+
+      mockFetch
+        .mockResolvedValueOnce(jsonResponse(page1))
+        .mockResolvedValueOnce(jsonResponse(page2))
+        .mockResolvedValueOnce(jsonResponse(subscriptionWithLimit))
+
+      await openaiProvider.fetchUsage('sk-test-key')
+
+      // First call is the initial URL, second call should include page=cursor
+      const secondUrl = mockFetch.mock.calls[1][0] as string
+      expect(secondUrl).toContain('page=page_abc123')
+    })
   })
 
   describe('error handling', () => {

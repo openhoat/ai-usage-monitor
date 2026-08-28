@@ -1,4 +1,4 @@
-import { getAvailableProviders, getProvider } from '../providers/index.js'
+import { getProvider } from '../providers/index.js'
 import type { ProviderConfig } from './config-store.js'
 import { getConfigForProviders, loadConfig, saveConfig } from './config-store.js'
 
@@ -27,10 +27,15 @@ interface StatusResult {
 let cachedResults: StatusResult | null = null
 let lastRefreshTime: string | null = null
 let refreshInProgress = false
+let currentIntervalMinutes: number = loadConfig().refresh_interval_minutes
 
 export async function handleStatus(): Promise<StatusResult> {
-  if (cachedResults) {
-    return { ...cachedResults, last_refresh: lastRefreshTime }
+  if (cachedResults && lastRefreshTime) {
+    const intervalMs = currentIntervalMinutes * 60_000
+    const ageMs = Date.now() - new Date(lastRefreshTime).getTime()
+    if (ageMs < intervalMs) {
+      return { ...cachedResults, last_refresh: lastRefreshTime }
+    }
   }
   return refreshAll()
 }
@@ -104,27 +109,7 @@ export async function refreshAll(): Promise<StatusResult> {
 
     await Promise.all(promises)
 
-    // Sort providers alphabetically by their display name
-    const PROVIDER_LABELS: Record<string, string> = {
-      anthropic: 'Anthropic',
-      claude: 'Claude',
-      gemini: 'Gemini',
-      ollama: 'Ollama',
-      openai: 'OpenAI',
-    }
-
-    const sortedProviders = Object.keys(results).sort((a, b) => {
-      const labelA = PROVIDER_LABELS[a] || a
-      const labelB = PROVIDER_LABELS[b] || b
-      return labelA.localeCompare(labelB)
-    })
-
-    const sortedResults: StatusResult['providers'] = {}
-    for (const p of sortedProviders) {
-      sortedResults[p] = results[p]
-    }
-
-    cachedResults = { providers: sortedResults, last_refresh: null }
+    cachedResults = { providers: results, last_refresh: null }
     lastRefreshTime = new Date().toISOString()
 
     return { ...cachedResults, last_refresh: lastRefreshTime }
@@ -134,54 +119,37 @@ export async function refreshAll(): Promise<StatusResult> {
 }
 
 export function handleGetConfig(): {
-  providers: Record<string, { value: string; defaultValue: string; isDefault: boolean }>
+  providers: Record<string, { value: string; isDefault: boolean }>
+  refresh_interval_minutes: number
 } {
-  // Load saved config without environment fallbacks first
-  const configFromFile = loadConfig() // Wait, loadConfig already applies fallbacks.
-  // I need a way to see what is actually in the file vs env.
+  const config = loadConfig()
+  const result: Record<string, { value: string; isDefault: boolean }> = {}
 
-  // Let's manually get env vars
-  const envVars: Record<string, string> = {
-    anthropic: process.env.ANTHROPIC_API_KEY || '',
-    claude: process.env.CLAUDE_CODE_OAUTH_TOKEN || process.env.CLAUDE_SESSION_COOKIE || '',
-    gemini: process.env.GEMINI_API_KEY || '',
-    openai: process.env.OPENAI_ADMIN_KEY || process.env.OPENAI_API_KEY || '',
-    ollama: process.env.OLLAMA_SESSION_COOKIE || '',
-  }
+  const fields: [string, keyof ProviderConfig][] = [
+    ['anthropic', 'anthropic_api_key'],
+    ['claude', 'claude_token'],
+    ['gemini', 'gemini_api_key'],
+    ['openai', 'openai_api_key'],
+    ['ollama', 'ollama_session_cookie'],
+    ['opencode-zen', 'opencode_zen_session'],
+    ['opencode-go', 'opencode_go_session'],
+    ['openrouter', 'openrouter_api_key'],
+  ]
 
-  const providers = getAvailableProviders()
-  const result: Record<string, { value: string; defaultValue: string; isDefault: boolean }> = {}
-
-  for (const name of providers) {
-    const key =
-      name === 'anthropic'
-        ? 'anthropic_api_key'
-        : name === 'claude'
-          ? 'claude_token'
-          : name === 'gemini'
-            ? 'gemini_api_key'
-            : name === 'openai'
-              ? 'openai_api_key'
-              : 'ollama_session_cookie'
-
-    const savedValue = configFromFile[key]
-    const defaultValue = envVars[name] || ''
-
-    // We want to know if the current value comes from the file or from the environment
-    // Actually, loadConfig right now returns the merged result.
-
+  for (const [name, key] of fields) {
+    const value = config[key]
+    const envKey = key.replace(/_/g, '').toUpperCase()
+    const envValue = process.env[envKey] || ''
     result[name] = {
-      value: savedValue,
-      defaultValue: defaultValue,
-      isDefault: !savedValue && !!defaultValue,
+      value: typeof value === 'string' ? value : '',
+      isDefault: !value && !!envValue,
     }
   }
 
-  return { providers: result }
+  return { providers: result, refresh_interval_minutes: currentIntervalMinutes }
 }
 
 export function handleSaveConfig(body: ProviderConfig): { success: boolean; message: string } {
-  // Merge with existing config (don't overwrite with empty values)
   const existing = loadConfig()
   const merged = { ...existing }
 
@@ -190,8 +158,17 @@ export function handleSaveConfig(body: ProviderConfig): { success: boolean; mess
   if (body.gemini_api_key) merged.gemini_api_key = body.gemini_api_key
   if (body.openai_api_key) merged.openai_api_key = body.openai_api_key
   if (body.ollama_session_cookie) merged.ollama_session_cookie = body.ollama_session_cookie
+  if (body.opencode_zen_session) merged.opencode_zen_session = body.opencode_zen_session
+  if (body.opencode_go_session) merged.opencode_go_session = body.opencode_go_session
+  if (body.openrouter_api_key) merged.openrouter_api_key = body.openrouter_api_key
+  if (body.refresh_interval_minutes >= 1) {
+    merged.refresh_interval_minutes = body.refresh_interval_minutes
+  }
 
   saveConfig(merged)
+
+  // Update the in-memory interval immediately
+  currentIntervalMinutes = merged.refresh_interval_minutes
 
   // Clear cache so next status call will re-fetch
   cachedResults = null

@@ -1,9 +1,0 @@
-{
-  "uuid": "ai-usage-monitor@openhoat.dev",
-  "name": "AI Usage Monitor",
-  "description": "Monitor AI subscription usage (Claude, OpenAI, Ollama) in the top bar",
-  "version": 2,
-  "shell-version": ["45", "46", "47", "48", "49", "50"],
-  "url": "https://github.com/openhoat/ai-usage-monitor-gnome-extension",
-  "settings-schema": "org.gnome.shell.extensions.ai-usage-monitor"
-}

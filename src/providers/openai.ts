@@ -47,7 +47,8 @@ async function fetchMonthlyCosts(apiKey: string): Promise<Map<string, number> | 
   const { startTime, endTime } = getMonthBounds()
   const costsByModel = new Map<string, number>()
 
-  let url = `https://api.openai.com/v1/organization/costs?start_time=${startTime}&end_time=${endTime}&limit=30&group_by=line_item`
+  const BASE_URL = `https://api.openai.com/v1/organization/costs?start_time=${startTime}&end_time=${endTime}&limit=30&group_by=line_item`
+  let url: string | null = BASE_URL
 
   try {
     while (url) {
@@ -65,7 +66,7 @@ async function fetchMonthlyCosts(apiKey: string): Promise<Map<string, number> | 
         costsByModel.set(model, (costsByModel.get(model) ?? 0) + cents)
       }
 
-      url = data.has_more && data.next_page ? data.next_page : ''
+      url = data.has_more && data.next_page ? `${BASE_URL}&page=${data.next_page}` : null
     }
   } catch (err) {
     logError(`[openai] Costs API fetch error: ${err instanceof Error ? err.message : String(err)}`)

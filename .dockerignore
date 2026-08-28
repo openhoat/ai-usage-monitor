@@ -1,0 +1,13 @@
+node_modules
+dist
+.git
+.github
+.idea
+.opencode
+.playwright-mcp
+.wireit
+extension
+screenshots
+*.log
+.env
+.secrets

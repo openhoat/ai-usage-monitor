@@ -119,17 +119,29 @@ describe('claudeProvider', () => {
   })
 
   describe('headers', () => {
-    test('should send Authorization header with Bearer token', async () => {
+    test('should send Cookie header with sessionKey and routingHint', async () => {
       mockFetch
         .mockResolvedValueOnce(jsonResponse(sampleOrgs))
         .mockResolvedValueOnce(jsonResponse(sampleRawUsage))
 
-      await claudeProvider.fetchUsage('my-secret-token')
+      await claudeProvider.fetchUsage('sk-ant-sid01-abc:sk-ant-rh-xyz')
 
       const callOptions = mockFetch.mock.calls[0][1] as RequestInit
       const headers = callOptions.headers as Record<string, string>
-      expect(headers.Authorization).toBe('Bearer my-secret-token')
+      expect(headers.Cookie).toBe('sessionKey=sk-ant-sid01-abc; routingHint=sk-ant-rh-xyz')
       expect(headers['User-Agent']).toBeDefined()
+    })
+
+    test('should send Cookie header with sessionKey only', async () => {
+      mockFetch
+        .mockResolvedValueOnce(jsonResponse(sampleOrgs))
+        .mockResolvedValueOnce(jsonResponse(sampleRawUsage))
+
+      await claudeProvider.fetchUsage('sk-ant-sid01-abc')
+
+      const callOptions = mockFetch.mock.calls[0][1] as RequestInit
+      const headers = callOptions.headers as Record<string, string>
+      expect(headers.Cookie).toBe('sessionKey=sk-ant-sid01-abc')
     })
   })
 })

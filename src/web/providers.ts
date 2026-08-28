@@ -1,0 +1,58 @@
+export const PROVIDERS = [
+  {
+    id: 'anthropic',
+    label: 'Anthropic (API)',
+    configKey: 'anthropic_api_key',
+    placeholder: 'sk-ant-...',
+    hint: 'console.anthropic.com → Settings → API keys → Create key',
+  },
+  {
+    id: 'claude',
+    label: 'Claude (claude.ai)',
+    configKey: 'claude_token',
+    placeholder: 'sessionKey:routingHint',
+    hint: 'Lancer "claude auth" ou F12 → Cookies → sessionKey + routingHint',
+  },
+  {
+    id: 'gemini',
+    label: 'Gemini (Google AI)',
+    configKey: 'gemini_api_key',
+    placeholder: 'AIza...',
+    hint: 'aistudio.google.com → Get API Key',
+  },
+  {
+    id: 'openai',
+    label: 'OpenAI (ChatGPT)',
+    configKey: 'openai_api_key',
+    placeholder: 'sk-...',
+    hint: 'platform.openai.com → Settings → API keys → Admin key',
+  },
+  {
+    id: 'ollama',
+    label: 'Ollama',
+    configKey: 'ollama_session_cookie',
+    placeholder: 'session cookie...',
+    hint: 'ollama.com → F12 → Application → Cookies → __Secure-session',
+  },
+  {
+    id: 'opencode-zen',
+    label: 'OpenCode Zen',
+    configKey: 'opencode_zen_session',
+    placeholder: 'wrk_01...:eyJ...',
+    hint: 'opencode.ai → workspace URL (ID) : F12 → Cookies → auth',
+  },
+  {
+    id: 'opencode-go',
+    label: 'OpenCode Go',
+    configKey: 'opencode_go_session',
+    placeholder: 'wrk_01...:eyJ...',
+    hint: 'opencode.ai → workspace URL (ID) : F12 → Cookies → auth',
+  },
+  {
+    id: 'openrouter',
+    label: 'OpenRouter',
+    configKey: 'openrouter_api_key',
+    placeholder: 'sk-or-v1-...',
+    hint: 'openrouter.ai → Keys → Create key',
+  },
+] as const

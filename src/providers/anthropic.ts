@@ -108,10 +108,13 @@ async function tryBillingApi(apiKey: string): Promise<Result | null> {
     }
 
     if (!orgRes.ok) {
-      const body = await orgRes.text().catch(() => '')
-      logError(
-        `[anthropic] Organizations API error: ${orgRes.status} ${orgRes.statusText} – ${body}`
-      )
+      // 404 = clé sans accès admin, fallback normal vers /v1/models
+      if (orgRes.status !== 404) {
+        const body = await orgRes.text().catch(() => '')
+        logError(
+          `[anthropic] Organizations API error: ${orgRes.status} ${orgRes.statusText} – ${body}`
+        )
+      }
       return null
     }
 

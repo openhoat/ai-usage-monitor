@@ -1,6 +1,29 @@
 import { fetchWithRetry } from '../helpers/fetch.js'
 import type { Provider, Result, TierUsage, UsageResult } from '../types.js'
 
+/**
+ * Parse the credential string. Supports two formats:
+ *   - "sessionKey" (sk-ant-sid...) — session cookie only
+ *   - "sessionKey:routingHint" — session cookie + routing hint (sk-ant-rh...)
+ * The routing hint is required to pass Cloudflare's TLS fingerprint check
+ * when calling from Node.js.
+ */
+export function parseCredential(
+  credential: string
+): { sessionKey: string; routingHint: string | null } | null {
+  const colonIndex = credential.indexOf(':')
+  if (colonIndex === -1) {
+    if (credential.startsWith('sk-ant-sid')) {
+      return { sessionKey: credential, routingHint: null }
+    }
+    return null
+  }
+  const sessionKey = credential.slice(0, colonIndex).trim()
+  const routingHint = credential.slice(colonIndex + 1).trim()
+  if (!sessionKey || !routingHint) return null
+  return { sessionKey, routingHint }
+}
+
 function buildHeaders(credential: string): Record<string, string> {
   const headers: Record<string, string> = {
     'User-Agent':
@@ -8,10 +31,13 @@ function buildHeaders(credential: string): Record<string, string> {
     Accept: 'application/json',
   }
 
-  // Detect format: sk-ant-sid is a session cookie, sk-ant-oat is an OAuth token
-  if (credential.startsWith('sk-ant-sid')) {
-    headers.Cookie = `sessionKey=${credential}`
-  } else {
+  // Detect format: "sessionKey:routingHint" (composite), sk-ant-sid (session cookie),
+  // sk-ant-oat (OAuth token)
+  const parsed = parseCredential(credential)
+  if (parsed) {
+    const cookie = `sessionKey=${parsed.sessionKey}`
+    headers.Cookie = parsed.routingHint ? `${cookie}; routingHint=${parsed.routingHint}` : cookie
+  } else if (credential.startsWith('sk-ant-oat')) {
     headers.Authorization = `Bearer ${credential}`
   }
 
@@ -126,7 +152,19 @@ async function tryApiEndpoints(credential: string): Promise<UsageResult | null> 
     })
     if (usageRes.status === 200) {
       const data = (await usageRes.json()) as RawUsageData
-      return parseRawUsageData(data)
+      const parsed = parseRawUsageData(data)
+      if (parsed) return parsed
+
+      // Authenticated but no usage buckets (e.g. free plan) — report as ok
+      return {
+        status: 'ok',
+        provider: 'claude',
+        plan: 'free',
+        tiers: [{ name: 'No usage data', percentage: 0 }],
+        overall_percentage: 0,
+        reset_date: null,
+        reset_in_hours: null,
+      }
     }
   } catch {
     // Fall through

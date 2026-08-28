@@ -4,7 +4,6 @@ import { readFileSync, writeFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 
 const PACKAGE_JSON_PATH = resolve(process.cwd(), 'package.json')
-const METADATA_JSON_PATH = resolve(process.cwd(), 'extension', 'metadata.json')
 
 /**
  * Parse semantic version string
@@ -70,26 +69,6 @@ function updatePackageJson(newVersion) {
 }
 
 /**
- * Update metadata.json with new version
- * @param {string} newVersion
- */
-function updateMetadataJson(newVersion) {
-  const content = readFileSync(METADATA_JSON_PATH, 'utf-8')
-  const metadata = JSON.parse(content)
-  const oldVersion = metadata.version
-
-  // metadata.json uses integer version (GNOME extension convention)
-  const { major, minor, patch } = parseVersion(newVersion)
-  const newIntVersion = major * 10000 + minor * 100 + patch
-
-  metadata.version = newIntVersion
-  writeFileSync(METADATA_JSON_PATH, `${JSON.stringify(metadata, null, 2)}\n`, 'utf-8')
-
-  // biome-ignore lint/suspicious/noConsole: CLI script that needs to output to console
-  console.log(`✓ Updated metadata.json: ${oldVersion} → ${newIntVersion}`)
-}
-
-/**
  * Main function
  */
 function main() {
@@ -136,7 +115,6 @@ function main() {
 
     // Update files
     updatePackageJson(newVersionStr)
-    updateMetadataJson(newVersionStr)
 
     // biome-ignore lint/suspicious/noConsole: CLI script that needs to output to console
     console.log('')

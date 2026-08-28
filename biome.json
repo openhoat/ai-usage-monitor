@@ -71,6 +71,11 @@
     },
     "globals": []
   },
+  "css": {
+    "parser": {
+      "tailwindDirectives": true
+    }
+  },
   "overrides": [
     {
       "includes": ["*.ts"],
@@ -110,29 +115,19 @@
       }
     },
     {
-      "includes": ["extension/**/*.js"],
+      "includes": ["src/web/**"],
       "linter": {
         "rules": {
           "style": {
-            "useNodejsImportProtocol": "off"
-          },
-          "correctness": {
-            "noUnusedVariables": "warn"
+            "noNonNullAssertion": "off"
           },
           "suspicious": {
             "noConsole": "off"
           }
         }
-      }
-    },
-    {
-      "includes": ["extension/**/*.css"],
-      "linter": {
-        "rules": {
-          "correctness": {
-            "noUnknownProperty": "off"
-          }
-        }
+      },
+      "formatter": {
+        "lineWidth": 100
       }
     }
   ]

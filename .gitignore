@@ -39,3 +39,9 @@ KANBAN.md
 .cache/
 .temp/
 .tmp/
+
+.opencode/
+test-results
+
+# Playwright MCP artifacts
+.playwright-mcp/

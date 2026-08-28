@@ -10,7 +10,7 @@ describe('config', () => {
     const userAgent = getUserAgent()
 
     // Match either full package name or short name
-    expect(userAgent).toMatch(/^ai-usage-monitor(-gnome-extension)?\/\d+\.\d+\.\d+/)
+    expect(userAgent).toMatch(/^ai-usage-monitor\/\d+\.\d+\.\d+/)
   })
 
   test('should include platform and architecture', () => {

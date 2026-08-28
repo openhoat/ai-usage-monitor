@@ -1,168 +1,133 @@
 # AI Usage Monitor
 
 <p align="center">
-  <strong>A GNOME Shell extension that monitors your AI subscription usage in real-time</strong>
+  <strong>Monitor your AI provider usage in a web dashboard</strong>
 </p>
 
 <p align="center">
-  <img src="extension/icons/ai-usage-monitor-symbolic.svg" alt="Logo" width="80" height="80">
-</p>
-
-<p align="center">
-  <img src="screenshots/extension-menu.jpg" alt="Extension Menu" width="400">
-  <img src="screenshots/preferences-window.png" alt="Preferences Window" width="400">
-</p>
-
-<p align="center">
-  <a href="https://github.com/openhoat/ai-usage-monitor-gnome-extension/actions/workflows/ci.yml"><img src="https://github.com/openhoat/ai-usage-monitor-gnome-extension/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
-  <a href="https://github.com/openhoat/ai-usage-monitor-gnome-extension/blob/main/LICENSE.txt"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License: MIT"></a>
   <img src="https://img.shields.io/badge/TypeScript-5.7-blue?logo=typescript&logoColor=white" alt="TypeScript 5.7">
   <img src="https://img.shields.io/badge/Node.js-≥22-green?logo=node.js&logoColor=white" alt="Node.js ≥22">
+  <img src="https://img.shields.io/badge/Hono-4.13-purple" alt="Hono 4.13">
+  <img src="https://img.shields.io/badge/React-19-blue?logo=react&logoColor=white" alt="React 19">
   <img src="https://img.shields.io/badge/Vitest-4.0-yellow?logo=vitest&logoColor=white" alt="Vitest 4.0">
-  <img src="https://img.shields.io/badge/GNOME_Shell-47-purple?logo=gnome&logoColor=white" alt="GNOME Shell 47">
-</p>
-
-<p align="center">
-  <a href="https://github.com/openhoat/ai-usage-monitor-gnome-extension/stargazers"><img src="https://img.shields.io/github/stars/openhoat/ai-usage-monitor-gnome-extension?style=social" alt="GitHub Stars"></a>
-  <a href="https://github.com/openhoat/ai-usage-monitor-gnome-extension/network/members"><img src="https://img.shields.io/github/forks/openhoat/ai-usage-monitor-gnome-extension?style=social" alt="GitHub Forks"></a>
-  <a href="https://github.com/openhoat/ai-usage-monitor-gnome-extension/issues"><img src="https://img.shields.io/github/issues/openhoat/ai-usage-monitor-gnome-extension" alt="GitHub Issues"></a>
-</p>
-
-<p align="center">
-  <a href="#features">Features</a> •
-  <a href="#installation">Installation</a> •
-  <a href="#configuration">Configuration</a> •
-  <a href="#troubleshooting">Troubleshooting</a> •
-  <a href="#development">Development</a>
+  <img src="https://img.shields.io/badge/Playwright-1.62-green?logo=playwright&logoColor=white" alt="Playwright 1.62">
 </p>
 
 ---
 
 ## Supported Providers
 
-| Provider | Authentication | Usage Data |
-|----------|---------------|------------|
-| **Claude** (Anthropic) | Session cookie | Tier usage (Standard 5h, Extended 7d) |
-| **Ollama** | Session cookie | Usage percentage by model |
-| **OpenAI** | API key | Monthly costs by model |
+| Provider | Authentication | Data |
+|----------|---------------|------|
+| **Anthropic** (API) | API key | Monthly spend, model breakdown |
+| **Claude** (claude.ai) | Session cookie (+ routing hint) | Tier usage (Standard 5h, Extended 7d) |
+| **Gemini** (Google AI) | API key | Available models |
+| **OpenAI** (ChatGPT) | Admin API key | Monthly costs by model |
+| **Ollama** (cloud) | Session cookie | Usage percentage |
+| **OpenCode Go** | workspaceId:authCookie | Rolling, weekly, monthly usage |
+| **OpenCode Zen** | workspaceId:authCookie | Balance, monthly spend |
+| **OpenRouter** | API key | Monthly spend, limit |
 
 ## Features
 
-- **Multi-provider support** — Monitor Claude, OpenAI, or other AI services
-- **Real-time usage display** — Shows your current usage percentage in the GNOME top bar
-- **Multi-tier support** — Displays usage breakdown by tier or model
-- **Visual indicators** — Color-coded usage levels (violet < 50%, orange 50-80%, red > 80%)
-- **Dropdown menu** — Detailed breakdown with progress bars
-- **Reset countdown** — Shows when your usage will reset
-- **Configurable refresh** — Set custom refresh interval (5-120 minutes)
+- **Multi-provider dashboard** — Monitor all your AI services in one place
+- **Status indicators** — Green/red dots per provider + global status
+- **Detailed view** — Expand each provider card to see tiers, percentages, reset times
+- **Auto-refresh** — Every 5 minutes (configurable via TanStack Query)
+- **Docker deployable** — Ready to deploy behind Traefik + SSO
+
+## Architecture
+
+```
+┌─────────────────────────────────────────────────┐
+│                  Frontend (React)                │
+│              src/web/ (Vite + Tailwind)          │
+├─────────────────────────────────────────────────┤
+│                  API (Hono)                      │
+│              src/server/ (Node.js)               │
+├─────────────────────────────────────────────────┤
+│              Provider scrapers                   │
+│              src/providers/                      │
+└─────────────────────────────────────────────────┘
+```
+
+- **Hono** — Lightweight API framework replacing the original `http` server
+- **React 19** — SPA dashboard with TanStack Query for data fetching
+- **Tailwind CSS** — Utility-first styling
+- **Playwright** — E2E tests for the dashboard
 
 ## Installation
 
-### Prerequisites
-
-- GNOME Shell 49
-- Node.js 22+ (for the fetch script)
-- Volta (recommended) or npm
-
-### Quick Install
+### Development
 
 ```bash
-git clone https://github.com/openhoat/ai-usage-monitor-gnome-extension.git
-cd ai-usage-monitor-gnome-extension
-bash scripts/install.sh
+npm install
+npm run dev:web
 ```
 
-After installation, log out and log back in (Wayland) or restart GNOME Shell (X11: `Alt+F2` → `r`).
+This starts two servers:
+- **Vite dev server** at `http://localhost:5173` (hot-reload)
+- **Hono API backend** at `http://localhost:3000`
 
-### Enable the Extension
+Vite proxies `/api` requests to the API server.
+
+### Production build
 
 ```bash
-gnome-extensions enable ai-usage-monitor@openhoat.dev
+npm run build
+npm run start:web
+```
+
+The server serves the built SPA from `dist/web/` and the API from `dist/server/`.
+
+### Docker
+
+```bash
+# Build the image
+docker build -t ai-usage-monitor .
+
+# Run with environment variables for credentials
+docker run -p 3000:3000 \
+  -e ANTHROPIC_API_KEY=sk-ant-... \
+  -e OPENROUTER_API_KEY=sk-or-... \
+  ai-usage-monitor
 ```
 
 ## Configuration
 
-Open the extension preferences to select your provider and enter credentials:
+Credentials are loaded from **environment variables** (docker) or the local config file at `~/.config/ai-usage-monitor/config.json` (dev).
 
-```bash
-gnome-extensions prefs ai-usage-monitor@openhoat.dev
-```
+### Environment variables
 
-### Claude Setup
+| Variable | Provider |
+|----------|----------|
+| `ANTHROPIC_API_KEY` | Anthropic API |
+| `CLAUDE_CODE_OAUTH_TOKEN` | Claude (OAuth token) |
+| `CLAUDE_SESSION_COOKIE` | Claude (session cookie) |
+| `GEMINI_API_KEY` | Gemini |
+| `OPENAI_ADMIN_KEY` / `OPENAI_API_KEY` | OpenAI |
+| `OLLAMA_SESSION_COOKIE` | Ollama |
+| `OPENCODE_GO_SESSION` | OpenCode Go (workspaceId:authCookie) |
+| `OPENCODE_ZEN_SESSION` | OpenCode Zen (workspaceId:authCookie) |
+| `OPENROUTER_API_KEY` | OpenRouter |
 
-1. Open [claude.ai](https://claude.ai) and log in
-2. Open Developer Tools (`F12`)
-3. Go to **Application → Cookies → `https://claude.ai`**
-4. Copy the value of `sessionKey`
-5. In the extension preferences, select **Claude (Anthropic)** and paste the session key
+### Claude credential format
 
-### OpenAI Setup
-
-1. Go to [platform.openai.com/api-keys](https://platform.openai.com/api-keys)
-2. Create a new API key
-3. In the extension preferences, select **OpenAI (ChatGPT)** and paste the API key
-
-### Ollama Setup
-
-1. Open [ollama.com](https://ollama.com) and log in
-2. Open Developer Tools (`F12`)
-3. Go to **Application → Cookies → `https://ollama.com`**
-4. Copy the value of the session cookie
-5. In the extension preferences, select **Ollama** and paste the session cookie
-
-### Refresh Interval
-
-By default, the extension refreshes usage data every 30 minutes. You can adjust this in the preferences (5-120 minutes).
-
-## Troubleshooting
-
-### Extension not appearing after installation
-
-On Wayland, you need to log out and log back in for GNOME Shell to detect new extensions.
-
-### "Node.js not found" error
-
-Make sure Node.js is installed and accessible. The extension looks for Node.js in:
-
-- `~/.volta/bin/node` (Volta)
-- `/usr/bin/node`
-- `/usr/local/bin/node`
-
-### "Auth expired" error
-
-Your credential has expired. Get a fresh one from your provider and update it in the extension preferences.
-
-### Extension shows errors
-
-Check the GNOME Shell logs:
-
-```bash
-journalctl -f /usr/bin/gnome-shell | grep -i usage
-```
+Claude requires a `sessionKey:routingHint` format. The `routingHint` (JWT `sk-ant-rh-...`) is necessary to pass Cloudflare's TLS fingerprint check when calling from Node.js.
 
 ## Development
 
-### Build
+### Test
 
 ```bash
-npm run build
-```
-
-### Test the fetch script
-
-```bash
-node dist/fetch-usage.js claude <your-session-cookie>
-node dist/fetch-usage.js ollama <your-session-cookie>
-node dist/fetch-usage.js openai <your-api-key>
-```
-
-### Run tests
-
-```bash
+# Unit tests (vitest)
 npm test
+
+# E2E tests (Playwright)
+npm run test:e2e
 ```
 
-### Validate code quality
+### Code quality
 
 ```bash
 npm run validate

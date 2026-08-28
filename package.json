@@ -1,40 +1,42 @@
 {
-  "name": "ai-usage-monitor-gnome-extension",
+  "name": "ai-usage-monitor",
   "version": "1.1.0",
   "type": "module",
   "private": true,
-  "description": "Monitor AI subscription usage (Claude, OpenAI, Ollama) in GNOME Shell",
+  "description": "Monitor AI provider usage (Claude, OpenAI, Ollama, OpenCode, OpenRouter) via a web dashboard",
   "author": "Olivier Penhoat <openhoat@gmail.com> (http://headwood.net/)",
   "license": "MIT",
-  "homepage": "https://github.com/openhoat/ai-usage-monitor-gnome-extension",
+  "homepage": "https://github.com/openhoat/ai-usage-monitor",
   "repository": {
     "type": "git",
-    "url": "https://github.com/openhoat/ai-usage-monitor-gnome-extension.git"
+    "url": "https://github.com/openhoat/ai-usage-monitor.git"
   },
   "bugs": {
-    "url": "https://github.com/openhoat/ai-usage-monitor-gnome-extension/issues"
+    "url": "https://github.com/openhoat/ai-usage-monitor/issues"
   },
   "keywords": [
-    "gnome",
-    "gnome-shell",
-    "extension",
     "ai",
     "claude",
     "openai",
     "ollama",
+    "opencode",
+    "openrouter",
     "usage",
-    "monitor"
+    "monitor",
+    "dashboard"
   ],
   "engines": {
     "node": ">=22.0.0"
   },
   "scripts": {
     "build": "wireit",
-    "dev": "npm run build && bash scripts/install.sh && dbus-run-session -- gnome-shell --wayland",
+    "build:server": "wireit",
+    "build:web": "wireit",
     "start": "node dist/fetch-usage.js",
     "start:web": "node dist/server/index.js",
-    "dev:web": "tsx watch src/server/index.ts",
+    "dev:web": "bash scripts/dev-web.sh",
     "test": "wireit",
+    "test:e2e": "playwright test --config playwright.config.mjs",
     "test:watch": "vitest",
     "qa": "wireit",
     "qa:fix": "biome check --write .",
@@ -42,17 +44,35 @@
     "bump": "node scripts/bump-version.js",
     "validate": "wireit",
     "prepare": "husky",
-    "pack": "bash scripts/generate-zip.sh"
+    "build:push": "bash scripts/build-push.sh"
   },
   "wireit": {
     "build": {
+      "dependencies": [
+        "build:server",
+        "build:web"
+      ]
+    },
+    "build:server": {
       "command": "tsc",
       "files": [
         "src/**/*.ts",
         "tsconfig.json"
       ],
       "output": [
-        "dist/**/*"
+        "dist/**/*.js",
+        "dist/**/*.d.ts"
+      ]
+    },
+    "build:web": {
+      "command": "vite build",
+      "files": [
+        "src/web/**/*",
+        "vite.config.ts",
+        "tsconfig.web.json"
+      ],
+      "output": [
+        "dist/web/**/*"
       ]
     },
     "qa": {
@@ -60,7 +80,7 @@
       "files": [
         "biome.json",
         "src/**/*.ts",
-        "extension/**/*.js"
+        "src/**/*.tsx"
       ],
       "output": []
     },
@@ -68,7 +88,9 @@
       "command": "vitest run",
       "files": [
         "src/**/*.ts",
-        "src/**/*.test.ts"
+        "src/**/*.tsx",
+        "src/**/*.test.ts",
+        "src/**/*.test.tsx"
       ],
       "output": []
     },
@@ -84,16 +106,32 @@
     "@biomejs/biome": "2.4.4",
     "@commitlint/cli": "20.4.2",
     "@commitlint/config-conventional": "20.4.2",
+    "@playwright/test": "1.62.1",
+    "@tailwindcss/vite": "4.3.3",
     "@testing-library/jest-dom": "6.9.1",
+    "@testing-library/react": "16.3.2",
     "@types/node": "^22.0.0",
+    "@types/react": "19.2.18",
+    "@types/react-dom": "19.2.5",
+    "@vitejs/plugin-react": "5.2.0",
+    "concurrently": "10.0.5",
     "happy-dom": "20.7.0",
     "husky": "9.1.7",
+    "tailwindcss": "4.3.3",
     "tsx": "4.21.0",
     "typescript": "^5.7.0",
+    "vite": "7.3.6",
     "vitest": "4.0.18",
     "wireit": "0.14.12"
   },
   "volta": {
     "node": "24.13.0"
+  },
+  "dependencies": {
+    "@hono/node-server": "2.1.1",
+    "@tanstack/react-query": "5.102.3",
+    "hono": "4.13.4",
+    "react": "19.2.8",
+    "react-dom": "19.2.8"
   }
 }
