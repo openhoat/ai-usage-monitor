@@ -32,8 +32,9 @@
 
 - **Multi-provider dashboard** — Monitor all your AI services in one place
 - **Status indicators** — Green/red dots per provider + global status
-- **Detailed view** — Expand each provider card to see tiers, percentages, reset times
-- **Auto-refresh** — Every 5 minutes (configurable via TanStack Query)
+- **Detailed view** — Provider cards show tiers, percentages and reset times directly
+- **Configurable auto-refresh** — Refresh interval set in Settings, drives both the frontend polling and the backend cache TTL
+- **Persistent settings** — Credentials and refresh interval persist across restarts (config volume)
 - **Docker deployable** — Ready to deploy behind Traefik + SSO
 
 ## Architecture
@@ -80,22 +81,46 @@ npm run start:web
 
 The server serves the built SPA from `dist/web/` and the API from `dist/server/`.
 
-### Docker
+### Debug a single provider (CLI)
 
 ```bash
-# Build the image
-docker build -t ai-usage-monitor .
+npm run build
+npm run start -- anthropic sk-ant-api03-...   # JSON result for one provider
+```
 
-# Run with environment variables for credentials
+`npm run start` runs the legacy CLI (`dist/fetch-usage.js`) that queries a single
+provider with a credential and prints a JSON result — handy to validate a scraper
+without opening the dashboard.
+
+## Docker
+
+The image is built and pushed to the private registry via `npm run build:push`
+(uses `docker build` + `skopeo copy` with the credentials from `~/.docker/config.json`):
+
+```bash
+npm run build:push          # build + push op3n.cloud:5000/ai-usage-monitor:<version>
+npm run build:push 1.2.0    # explicit version
+```
+
+### Run with environment variables
+
+```bash
 docker run -p 3000:3000 \
   -e ANTHROPIC_API_KEY=sk-ant-... \
   -e OPENROUTER_API_KEY=sk-or-... \
-  ai-usage-monitor
+  -e REFRESH_INTERVAL_MINUTES=5 \
+  -v ai-usage-monitor-config:/home/node/.config/ai-usage-monitor \
+  op3n.cloud:5000/ai-usage-monitor:1.1.0
 ```
+
+Mounting a volume on `/home/node/.config/ai-usage-monitor` makes settings saved
+from the dashboard UI (credentials, refresh interval) persist across restarts.
 
 ## Configuration
 
-Credentials are loaded from **environment variables** (docker) or the local config file at `~/.config/ai-usage-monitor/config.json` (dev).
+Credentials are loaded from the local config file
+`~/.config/ai-usage-monitor/config.json` (created by the Settings UI) or from
+**environment variables** (docker). File values take priority over env vars.
 
 ### Environment variables
 
@@ -110,6 +135,13 @@ Credentials are loaded from **environment variables** (docker) or the local conf
 | `OPENCODE_GO_SESSION` | OpenCode Go (workspaceId:authCookie) |
 | `OPENCODE_ZEN_SESSION` | OpenCode Zen (workspaceId:authCookie) |
 | `OPENROUTER_API_KEY` | OpenRouter |
+| `REFRESH_INTERVAL_MINUTES` | Default auto-refresh interval (default `5`) |
+
+The refresh interval can be changed at runtime from the **Settings** UI. It is
+persisted in the config file and overrides the `REFRESH_INTERVAL_MINUTES` env var.
+It drives both the frontend polling interval and the backend cache TTL:
+the server re-fetches provider usage from external APIs only when a status
+request arrives after the cache has expired (lazy re-fetch — no background traffic).
 
 ### Claude credential format
 

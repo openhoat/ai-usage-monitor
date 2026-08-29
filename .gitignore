@@ -29,9 +29,6 @@ Thumbs.db
 # Wireit cache
 .wireit/
 
-# Claude Code
-.claude/
-
 # Project management
 KANBAN.md
 

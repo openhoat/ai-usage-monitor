@@ -31,7 +31,7 @@ function getPackageInfo(): { name: string; version: string } {
     // Fall through to defaults
   }
 
-  return { name: 'ai-usage-monitor', version: '1.0.0' }
+  return { name: 'ai-usage-monitor', version: '1.1.0' }
 }
 
 /**

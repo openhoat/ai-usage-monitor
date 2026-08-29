@@ -1,19 +1,7 @@
 {
   "name": "ai-usage-monitor",
   "version": "1.1.0",
-  "type": "module",
-  "private": true,
   "description": "Monitor AI provider usage (Claude, OpenAI, Ollama, OpenCode, OpenRouter) via a web dashboard",
-  "author": "Olivier Penhoat <openhoat@gmail.com> (http://headwood.net/)",
-  "license": "MIT",
-  "homepage": "https://github.com/openhoat/ai-usage-monitor",
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/openhoat/ai-usage-monitor.git"
-  },
-  "bugs": {
-    "url": "https://github.com/openhoat/ai-usage-monitor/issues"
-  },
   "keywords": [
     "ai",
     "claude",
@@ -25,26 +13,71 @@
     "monitor",
     "dashboard"
   ],
-  "engines": {
-    "node": ">=22.0.0"
+  "license": "MIT",
+  "author": "Olivier Penhoat <openhoat@gmail.com> (http://headwood.net/)",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/openhoat/ai-usage-monitor.git"
   },
+  "type": "module",
   "scripts": {
     "build": "wireit",
+    "build:push": "bash scripts/build-push.sh",
     "build:server": "wireit",
     "build:web": "wireit",
+    "bump": "node scripts/bump-version.js",
+    "changelog": "node scripts/generate-changelog.js",
+    "dev:web": "bash scripts/dev-web.sh",
+    "pack": "bash scripts/pack.sh",
+    "prepare": "husky",
+    "qa": "wireit",
+    "qa:fix": "biome check --write .",
     "start": "node dist/fetch-usage.js",
     "start:web": "node dist/server/index.js",
-    "dev:web": "bash scripts/dev-web.sh",
     "test": "wireit",
     "test:e2e": "playwright test --config playwright.config.mjs",
     "test:watch": "vitest",
-    "qa": "wireit",
-    "qa:fix": "biome check --write .",
-    "changelog": "node scripts/generate-changelog.js",
-    "bump": "node scripts/bump-version.js",
-    "validate": "wireit",
-    "prepare": "husky",
-    "build:push": "bash scripts/build-push.sh"
+    "validate": "wireit"
+  },
+  "dependencies": {
+    "@hono/node-server": "2.1.1",
+    "@tanstack/react-query": "5.102.3",
+    "hono": "4.13.4",
+    "react": "19.2.8",
+    "react-dom": "19.2.8"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.4.4",
+    "@commitlint/cli": "20.4.2",
+    "@commitlint/config-conventional": "20.4.2",
+    "@playwright/test": "1.62.1",
+    "@tailwindcss/vite": "4.3.3",
+    "@testing-library/jest-dom": "6.9.1",
+    "@testing-library/react": "16.3.2",
+    "@types/node": "^22.0.0",
+    "@types/react": "19.2.18",
+    "@types/react-dom": "19.2.5",
+    "@vitejs/plugin-react": "5.2.0",
+    "concurrently": "10.0.5",
+    "happy-dom": "20.7.0",
+    "husky": "9.1.7",
+    "tailwindcss": "4.3.3",
+    "tsx": "4.21.0",
+    "typescript": "^5.7.0",
+    "vite": "7.3.6",
+    "vitest": "4.0.18",
+    "wireit": "0.14.12"
+  },
+  "bugs": {
+    "url": "https://github.com/openhoat/ai-usage-monitor/issues"
+  },
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "homepage": "https://github.com/openhoat/ai-usage-monitor",
+  "private": true,
+  "volta": {
+    "node": "24.13.0"
   },
   "wireit": {
     "build": {
@@ -101,37 +134,5 @@
         "test"
       ]
     }
-  },
-  "devDependencies": {
-    "@biomejs/biome": "2.4.4",
-    "@commitlint/cli": "20.4.2",
-    "@commitlint/config-conventional": "20.4.2",
-    "@playwright/test": "1.62.1",
-    "@tailwindcss/vite": "4.3.3",
-    "@testing-library/jest-dom": "6.9.1",
-    "@testing-library/react": "16.3.2",
-    "@types/node": "^22.0.0",
-    "@types/react": "19.2.18",
-    "@types/react-dom": "19.2.5",
-    "@vitejs/plugin-react": "5.2.0",
-    "concurrently": "10.0.5",
-    "happy-dom": "20.7.0",
-    "husky": "9.1.7",
-    "tailwindcss": "4.3.3",
-    "tsx": "4.21.0",
-    "typescript": "^5.7.0",
-    "vite": "7.3.6",
-    "vitest": "4.0.18",
-    "wireit": "0.14.12"
-  },
-  "volta": {
-    "node": "24.13.0"
-  },
-  "dependencies": {
-    "@hono/node-server": "2.1.1",
-    "@tanstack/react-query": "5.102.3",
-    "hono": "4.13.4",
-    "react": "19.2.8",
-    "react-dom": "19.2.8"
   }
 }
