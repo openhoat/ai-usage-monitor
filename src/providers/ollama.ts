@@ -22,21 +22,26 @@ export function parseOllamaPage(html: string): UsageResult | null {
   let resetDate: string | null = null
   let resetInHours: number | null = null
 
-  // Extract plan from badge (look for the badge in Cloud usage section)
-  // Try multiple patterns as Ollama page structure may vary
-  const usageSectionMatch =
+  // Extract plan from the "Included usage" badge (new structure)
+  // <h2 ...><span>Included usage</span><span class="...">pro</span></h2>
+  // Note: the closing </span> may be split across lines (e.g. "</span\n>")
+  const planMatch =
+    html.match(/>Included usage<[\s\S]{0,300}?>(\w+)<\/span\s*>/i) ||
     html.match(/>Cloud usage<[\s\S]{0,500}?>(\w+)</) ||
     html.match(/Cloud usage[\s\S]{0,200}?badge[^>]*>(\w+)<\//) ||
     html.match(/data-testid="plan-badge"[^>]*>(\w+)</)
-  if (usageSectionMatch) {
-    plan = usageSectionMatch[1].trim().toLowerCase()
+  if (planMatch) {
+    plan = planMatch[1].trim().toLowerCase()
   }
 
-  // Parse each usage section using regex
-  // Looking for the patterns like: <span class="text-sm">...</span> and <span class="text-sm">...% used</span>
-  // We use a more generic approach to find the usage blocks
+  // Parse the monthly usage block (new structure):
+  // <div class="flex justify-between mb-2">
+  //   <span class="text-sm">Monthly usage</span>
+  //   <span class="text-sm ">$4.32 of $60 used</span>
+  // </div>
+  // Fallback to the legacy "N% used" format.
   const blockMatches = html.matchAll(
-    /class="flex justify-between[^>]*>\s*<span[^>]*>([\w][\w\s]*?)<\/span>\s*<span[^>]*>[\s\n]*(\d+(?:\.\d+)?\s*% used)/g
+    /class="flex justify-between[^>]*>\s*<span[^>]*>([\w][\w\s]*?)<\/span>\s*<span[^>]*>[\s\n]*(\$[\d.,]+\s*of\s*\$[\d.,]+\s*used|\d+(?:\.\d+)?\s*% used)/g
   )
   for (const blockMatch of blockMatches) {
     const name = blockMatch[1].trim()
@@ -44,20 +49,51 @@ export function parseOllamaPage(html: string): UsageResult | null {
 
     let percentage = 0
 
-    // Parse percentage (e.g., "3.9% used" or "5% used")
-    const pctMatch = valueText.match(/(\d+(?:\.\d+)?)\s*%\s*used/i)
-    if (pctMatch) {
-      percentage = parseFloat(pctMatch[1])
+    // New format: "$4.32 of $60 used" -> percentage = spent / total * 100
+    const dollarMatch = valueText.match(/\$([\d.,]+)\s*of\s*\$([\d.,]+)\s*used/i)
+    if (dollarMatch) {
+      const spent = parseFloat(dollarMatch[1].replace(/,/g, ''))
+      const total = parseFloat(dollarMatch[2].replace(/,/g, ''))
+      if (total > 0) {
+        percentage = (spent / total) * 100
+      }
+    } else {
+      // Legacy format: "3.9% used"
+      const pctMatch = valueText.match(/(\d+(?:\.\d+)?)\s*%\s*used/i)
+      if (pctMatch) {
+        percentage = parseFloat(pctMatch[1])
+      }
     }
 
     if (percentage > 0 || name) {
       tiers.push({ name, percentage })
 
-      // Track overall percentage (use highest)
       if (percentage > overallPercentage) {
         overallPercentage = percentage
       }
     }
+  }
+
+  // Fallback: if no "of $X used" block matched, read the percentage from the
+  // usage meter width style: <div ... style="width: 7.2%; ">
+  if (tiers.length === 0) {
+    const meterMatch = html.match(/data-usage-meter[\s\S]{0,800}?style="width:\s*([\d.]+)%/)
+    if (meterMatch) {
+      const percentage = parseFloat(meterMatch[1])
+      tiers.push({ name: 'Monthly usage', percentage })
+      overallPercentage = percentage
+    }
+  }
+
+  // Extract the extra-usage balance as an additional tier (new structure):
+  // <div class="mb-1 text-xs text-neutral-500">Balance remaining</div>
+  // <div class="text-2xl font-medium leading-tight">$0</div>
+  const balanceMatch = html.match(
+    />Balance remaining<[\s\S]{0,200}?class="text-2xl[^"]*"[^>]*>\$([\d.,]+)</
+  )
+  if (balanceMatch) {
+    const balance = parseFloat(balanceMatch[1].replace(/,/g, ''))
+    tiers.push({ name: 'Balance remaining', percentage: balance })
   }
 
   // Look for reset time (local-time can be among multiple CSS classes)
@@ -121,14 +157,16 @@ export const ollamaProvider: Provider = {
     }
 
     // Check if we're actually logged in (login redirect detected)
-    // Ollama now uses WorkOS for auth — detect both old and new login page patterns
+    // Ollama now uses WorkOS AuthKit for auth — detect both old and new login page patterns
     if (
       html.includes('action="/signin"') ||
       html.includes('href="/login"') ||
       html.includes('href="/signin"') ||
       html.includes('href="/sign-up') ||
       html.includes('api/login?provider=') ||
-      html.includes('<title>Sign in</title>')
+      html.includes('<title>Sign in</title>') ||
+      html.includes('hosted-authkit') ||
+      html.includes('data-dpl-id="hosted-authkit')
     ) {
       return {
         status: 'error',
