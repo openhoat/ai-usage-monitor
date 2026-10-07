@@ -29,6 +29,9 @@ Thumbs.db
 # Wireit cache
 .wireit/
 
+# npm cache
+.npm/
+
 # Project management
 KANBAN.md
 

@@ -1,0 +1,41 @@
+# markdownlint-cli2 configuration
+# See: https://github.com/DavidAnson/markdownlint
+
+config:
+  # Default state for all rules
+  default: true
+
+  # MD013/line-length - disabled (long lines are fine in docs/README tables)
+  MD013: false
+
+  # MD024/no-duplicate-heading - allow duplicate headings in different sections
+  MD024:
+    siblings_only: true
+
+  # MD033/no-inline-html - allow inline HTML (badges, centered blocks)
+  MD033: false
+
+  # MD041/first-line-heading - content files may start with a badge block
+  MD041: false
+
+  # MD046/code-block-style - allow indented code blocks
+  MD046: false
+
+  # MD060/table-column-style - allow flexible table formatting
+  MD060: false
+
+globs:
+  - "**/*.md"
+
+ignores:
+  - "node_modules"
+  - ".npm"
+  - ".git"
+  - ".opencode"
+  - ".wireit"
+  - "dist"
+  - "coverage"
+  - "test-results"
+  - ".playwright-mcp"
+  - "CHANGELOG.md"
+  - "KANBAN.md"

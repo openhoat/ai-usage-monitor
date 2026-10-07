@@ -2,8 +2,8 @@ import { useQuery } from '@tanstack/react-query'
 import { useState } from 'react'
 import { ProviderCard } from './components/ProviderCard'
 import { SettingsModal } from './components/SettingsModal'
-import { setRefreshIntervalMs } from './main'
 import { PROVIDERS } from './providers'
+import { setRefreshIntervalMs } from './refresh-interval'
 import type { StatusResponse } from './types'
 
 async function fetchStatus(): Promise<StatusResponse> {

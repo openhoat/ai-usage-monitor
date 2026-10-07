@@ -31,12 +31,22 @@
     "pack": "bash scripts/pack.sh",
     "prepare": "husky",
     "qa": "wireit",
-    "qa:fix": "biome check --write .",
+    "qa:arch": "wireit",
+    "qa:biome": "wireit",
+    "qa:biome:fix": "biome check --write .",
+    "qa:fix": "npm run qa:biome:fix && npm run qa:markdown:fix && npm run qa:prettier:fix",
+    "qa:markdown": "wireit",
+    "qa:markdown:fix": "markdownlint-cli2 --fix",
+    "qa:prettier": "wireit",
+    "qa:prettier:fix": "prettier --write \"**/*.md\"",
+    "sonar": "wireit",
     "start": "node dist/fetch-usage.js",
     "start:web": "node dist/server/index.js",
     "test": "wireit",
+    "test:coverage": "wireit",
     "test:e2e": "playwright test --config playwright.config.mjs",
     "test:watch": "vitest",
+    "typecheck": "wireit",
     "validate": "wireit"
   },
   "dependencies": {
@@ -58,9 +68,14 @@
     "@types/react": "19.2.18",
     "@types/react-dom": "19.2.5",
     "@vitejs/plugin-react": "5.2.0",
+    "@vitest/coverage-v8": "4.0.18",
     "concurrently": "10.0.5",
+    "dependency-cruiser": "18.4.0",
     "happy-dom": "20.7.0",
     "husky": "9.1.7",
+    "markdownlint-cli2": "0.23.3",
+    "prettier": "3.9.9",
+    "sonarqube-scanner": "5.0.1",
     "tailwindcss": "4.3.3",
     "tsx": "4.21.0",
     "typescript": "^5.7.0",
@@ -72,12 +87,14 @@
     "url": "https://github.com/openhoat/ai-usage-monitor/issues"
   },
   "engines": {
-    "node": ">=22.0.0"
+    "node": ">=24.0.0",
+    "npm": ">=11.0.0"
   },
   "homepage": "https://github.com/openhoat/ai-usage-monitor",
   "private": true,
   "volta": {
-    "node": "24.13.0"
+    "node": "24.13.0",
+    "npm": "11.6.2"
   },
   "wireit": {
     "build": {
@@ -109,6 +126,23 @@
       ]
     },
     "qa": {
+      "dependencies": [
+        "qa:arch",
+        "qa:biome",
+        "qa:markdown",
+        "qa:prettier"
+      ]
+    },
+    "qa:arch": {
+      "command": "depcruise src --config .dependency-cruiser.mjs",
+      "files": [
+        ".dependency-cruiser.mjs",
+        "tsconfig.json",
+        "src/**/*.ts"
+      ],
+      "output": []
+    },
+    "qa:biome": {
       "command": "biome check .",
       "files": [
         "biome.json",
@@ -117,13 +151,70 @@
       ],
       "output": []
     },
+    "qa:markdown": {
+      "command": "markdownlint-cli2",
+      "files": [
+        "**/*.md",
+        ".markdownlint-cli2.yaml",
+        "!node_modules/**",
+        "!dist/**",
+        "!coverage/**",
+        "!test-results/**",
+        "!.playwright-mcp/**",
+        "!.wireit/**",
+        "!.npm/**"
+      ],
+      "output": []
+    },
+    "qa:prettier": {
+      "command": "prettier --check \"**/*.md\"",
+      "files": [
+        "**/*.md",
+        ".prettierignore",
+        "!node_modules/**",
+        "!dist/**",
+        "!coverage/**",
+        "!test-results/**",
+        "!.playwright-mcp/**",
+        "!.wireit/**",
+        "!.npm/**"
+      ],
+      "output": []
+    },
+    "sonar": {
+      "command": "sonar-scanner-npm",
+      "dependencies": [
+        "test:coverage"
+      ]
+    },
     "test": {
       "command": "vitest run",
       "files": [
         "src/**/*.ts",
         "src/**/*.tsx",
         "src/**/*.test.ts",
-        "src/**/*.test.tsx"
+        "src/**/*.test.tsx",
+        "vitest.config.ts"
+      ],
+      "output": []
+    },
+    "test:coverage": {
+      "command": "vitest run --coverage",
+      "files": [
+        "src/**/*.ts",
+        "src/**/*.tsx",
+        "vitest.config.ts"
+      ],
+      "output": [
+        "dist/coverage/**"
+      ]
+    },
+    "typecheck": {
+      "command": "tsc -p tsconfig.typecheck.json --noEmit",
+      "files": [
+        "src/**/*.ts",
+        "tsconfig.typecheck.json",
+        "tsconfig.json"
       ],
       "output": []
     },
@@ -131,7 +222,8 @@
       "dependencies": [
         "qa",
         "build",
-        "test"
+        "test:coverage",
+        "typecheck"
       ]
     }
   }

@@ -3,24 +3,17 @@ import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import App from './App'
 import './index.css'
-
-let refreshIntervalMs = 5 * 60 * 1000
+import { getRefreshIntervalMs, setRefreshIntervalMs } from './refresh-interval'
 
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
-      refetchInterval: () => refreshIntervalMs,
+      refetchInterval: () => getRefreshIntervalMs(),
       staleTime: 60 * 1000,
       retry: 1,
     },
   },
 })
-
-export function setRefreshIntervalMs(minutes: number): void {
-  if (minutes >= 1) {
-    refreshIntervalMs = minutes * 60 * 1000
-  }
-}
 
 async function loadRefreshInterval(): Promise<void> {
   try {
@@ -29,7 +22,7 @@ async function loadRefreshInterval(): Promise<void> {
     const data = (await res.json()) as { refresh_interval_minutes?: number }
     const minutes = data.refresh_interval_minutes
     if (typeof minutes === 'number' && minutes >= 1) {
-      refreshIntervalMs = minutes * 60 * 1000
+      setRefreshIntervalMs(minutes)
     }
   } catch {
     // Keep default interval on failure

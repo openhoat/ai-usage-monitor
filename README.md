@@ -6,7 +6,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/TypeScript-5.7-blue?logo=typescript&logoColor=white" alt="TypeScript 5.7">
-  <img src="https://img.shields.io/badge/Node.js-≥22-green?logo=node.js&logoColor=white" alt="Node.js ≥22">
+  <img src="https://img.shields.io/badge/Node.js-≥24-green?logo=node.js&logoColor=white" alt="Node.js ≥24">
   <img src="https://img.shields.io/badge/Hono-4.13-purple" alt="Hono 4.13">
   <img src="https://img.shields.io/badge/React-19-blue?logo=react&logoColor=white" alt="React 19">
   <img src="https://img.shields.io/badge/Vitest-4.0-yellow?logo=vitest&logoColor=white" alt="Vitest 4.0">
@@ -17,15 +17,15 @@
 
 ## Supported Providers
 
-| Provider | Authentication | Data |
-|----------|---------------|------|
-| **Anthropic** (API) | API key | Monthly spend, model breakdown |
-| **Claude** (claude.ai) | Session cookie (+ routing hint) | Tier usage (Standard 5h, Extended 7d) |
-| **Gemini** (Google AI) | API key | Available models |
-| **OpenAI** (ChatGPT) | Admin API key | Monthly costs by model |
-| **Ollama** (cloud) | Session cookie | Usage percentage |
-| **OpenCode** | workspaceId:sessionCookie | Balance, 24h / 30d spend, Go plan meters (5h / week / month) |
-| **OpenRouter** | API key | Monthly spend, limit |
+| Provider               | Authentication                  | Data                                                         |
+| ---------------------- | ------------------------------- | ------------------------------------------------------------ |
+| **Anthropic** (API)    | API key                         | Monthly spend, model breakdown                               |
+| **Claude** (claude.ai) | Session cookie (+ routing hint) | Tier usage (Standard 5h, Extended 7d)                        |
+| **Gemini** (Google AI) | API key                         | Available models                                             |
+| **OpenAI** (ChatGPT)   | Admin API key                   | Monthly costs by model                                       |
+| **Ollama** (cloud)     | Session cookie                  | Usage percentage                                             |
+| **OpenCode**           | workspaceId:sessionCookie       | Balance, 24h / 30d spend, Go plan meters (5h / week / month) |
+| **OpenRouter**         | API key                         | Monthly spend, limit                                         |
 
 ## Features
 
@@ -38,7 +38,7 @@
 
 ## Architecture
 
-```
+```text
 ┌─────────────────────────────────────────────────┐
 │                  Frontend (React)                │
 │              src/web/ (Vite + Tailwind)          │
@@ -66,6 +66,7 @@ npm run dev:web
 ```
 
 This starts two servers:
+
 - **Vite dev server** at `http://localhost:5173` (hot-reload)
 - **Hono API backend** at `http://localhost:3000`
 
@@ -123,17 +124,17 @@ Credentials are loaded from the local config file
 
 ### Environment variables
 
-| Variable | Provider |
-|----------|----------|
-| `ANTHROPIC_API_KEY` | Anthropic API |
-| `CLAUDE_CODE_OAUTH_TOKEN` | Claude (OAuth token) |
-| `CLAUDE_SESSION_COOKIE` | Claude (session cookie) |
-| `GEMINI_API_KEY` | Gemini |
-| `OPENAI_ADMIN_KEY` / `OPENAI_API_KEY` | OpenAI |
-| `OLLAMA_SESSION_COOKIE` | Ollama |
-| `OPENCODE_SESSION` | OpenCode (workspaceId:sessionCookie) |
-| `OPENROUTER_API_KEY` | OpenRouter |
-| `REFRESH_INTERVAL_MINUTES` | Default auto-refresh interval (default `5`) |
+| Variable                              | Provider                                    |
+| ------------------------------------- | ------------------------------------------- |
+| `ANTHROPIC_API_KEY`                   | Anthropic API                               |
+| `CLAUDE_CODE_OAUTH_TOKEN`             | Claude (OAuth token)                        |
+| `CLAUDE_SESSION_COOKIE`               | Claude (session cookie)                     |
+| `GEMINI_API_KEY`                      | Gemini                                      |
+| `OPENAI_ADMIN_KEY` / `OPENAI_API_KEY` | OpenAI                                      |
+| `OLLAMA_SESSION_COOKIE`               | Ollama                                      |
+| `OPENCODE_SESSION`                    | OpenCode (workspaceId:sessionCookie)        |
+| `OPENROUTER_API_KEY`                  | OpenRouter                                  |
+| `REFRESH_INTERVAL_MINUTES`            | Default auto-refresh interval (default `5`) |
 
 The refresh interval can be changed at runtime from the **Settings** UI. It is
 persisted in the config file and overrides the `REFRESH_INTERVAL_MINUTES` env var.
@@ -174,7 +175,14 @@ npm run test:e2e
 ### Code quality
 
 ```bash
+# Full gate: lint (biome + markdownlint + prettier), architecture
+# (dependency-cruiser), typecheck, unit tests with coverage, build
 npm run validate
+
+# Individual checks
+npm run typecheck      # tsc --noEmit
+npm run test:coverage  # vitest + coverage (dist/coverage)
+npm run sonar          # push the analysis to SonarQube (needs SONAR_TOKEN)
 ```
 
 ## License

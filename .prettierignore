@@ -1,0 +1,10 @@
+CHANGELOG.md
+KANBAN.md
+node_modules/
+.npm/
+.opencode/
+dist/
+coverage/
+.wireit/
+test-results/
+.playwright-mcp/
