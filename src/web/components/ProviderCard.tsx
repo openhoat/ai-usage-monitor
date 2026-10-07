@@ -116,7 +116,7 @@ function getTierIcon(name: string): (props: { label: string }) => ReactNode {
   if (lower.includes('balance')) return WalletIcon
   if (lower.includes('spend') || /monthly\s*\(?\$/.test(lower)) return CreditCardIcon
   if (lower.includes('limit')) return GaugeIcon
-  if (/rolling|5h|7d|weekly|monthly|standard|extended|cowork|omelette/.test(lower)) return ClockIcon
+  if (/rolling|5h|7d|week|month|standard|extended|cowork|omelette/.test(lower)) return ClockIcon
   if (lower.includes('api key') || lower.includes('models')) return KeyIcon
   return InfoIcon
 }
@@ -145,21 +145,24 @@ export function ProviderCard({ name, result }: { name: string; result: ProviderR
             {ERROR_MESSAGES[result.error?.code || ''] || result.error?.message || 'Unknown error'}
           </p>
         ) : (
-          <div className="space-y-2">
+          <div className="space-y-3">
             {result.data?.tiers.map(tier => {
               const Icon = getTierIcon(tier.name)
               return (
-                <div key={tier.name} className="flex items-center gap-2">
-                  <Icon label={tier.name} />
-                  <div className="h-2 flex-1 overflow-hidden rounded-full bg-muted">
+                <div key={tier.name} className="space-y-1">
+                  <div className="flex items-center gap-2">
+                    <Icon label={tier.name} />
+                    <span className="flex-1 truncate text-sm">{tier.name}</span>
+                    <span className="shrink-0 text-sm font-semibold">
+                      {Math.round(tier.percentage)}%
+                    </span>
+                  </div>
+                  <div className="h-2 overflow-hidden rounded-full bg-muted">
                     <div
                       className={`h-full ${levelClass(tier.percentage)}`}
                       style={{ width: `${Math.min(tier.percentage, 100)}%` }}
                     />
                   </div>
-                  <span className="w-10 shrink-0 text-right text-sm font-semibold">
-                    {Math.round(tier.percentage)}%
-                  </span>
                 </div>
               )
             })}
