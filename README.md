@@ -97,7 +97,7 @@ The image is built and pushed to the private registry via `npm run build:push`
 (uses `docker build` + `skopeo copy` with the credentials from `~/.docker/config.json`):
 
 ```bash
-npm run build:push          # build + push op3n.cloud:5000/ai-usage-monitor:<version>
+npm run build:push          # build + push registry.op3n.cloud/ai-usage-monitor:<version>
 npm run build:push 1.2.0    # explicit version
 ```
 
@@ -109,7 +109,7 @@ docker run -p 3000:3000 \
   -e OPENROUTER_API_KEY=sk-or-... \
   -e REFRESH_INTERVAL_MINUTES=5 \
   -v ai-usage-monitor-config:/home/node/.config/ai-usage-monitor \
-  op3n.cloud:5000/ai-usage-monitor:1.1.0
+  registry.op3n.cloud/ai-usage-monitor:1.2.0
 ```
 
 Mounting a volume on `/home/node/.config/ai-usage-monitor` makes settings saved

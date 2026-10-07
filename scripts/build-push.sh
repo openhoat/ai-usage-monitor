@@ -6,7 +6,7 @@ set -euo pipefail
 # from ~/.docker/config.json).
 # Usage: ./scripts/build-push.sh [version]
 
-REGISTRY="${REGISTRY:-op3n.cloud:5000}"
+REGISTRY="${REGISTRY:-registry.op3n.cloud}"
 IMAGE="ai-usage-monitor"
 
 VERSION="${1:-$(node -p "require('./package.json').version")}"
