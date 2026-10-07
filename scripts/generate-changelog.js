@@ -81,7 +81,7 @@ function getCommits(sinceTag) {
  * Supports: type: description, type(scope): description
  */
 function parseConventionalCommit(subject) {
-  const match = subject.match(/^(\w+)(?:\([^)]*\))?:\s*(.+)/)
+  const match = subject.match(/^(\w+)(?:\([^)]*\))?!?:\s*(.+)/)
   if (!match) return null
 
   const type = match[1].toLowerCase()
