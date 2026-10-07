@@ -24,7 +24,7 @@
 | **Gemini** (Google AI) | API key | Available models |
 | **OpenAI** (ChatGPT) | Admin API key | Monthly costs by model |
 | **Ollama** (cloud) | Session cookie | Usage percentage |
-| **OpenCode** | workspaceId:sessionCookie | Balance, 24h / 30d spend |
+| **OpenCode** | workspaceId:sessionCookie | Balance, 24h / 30d spend, Go plan meters (5h / week / month) |
 | **OpenRouter** | API key | Monthly spend, limit |
 
 ## Features
@@ -155,8 +155,9 @@ OpenCode uses the console session cookie, in the `workspaceId:sessionCookie` for
 3. Copy the workspace ID (`wrk_...`) from the console URL
 4. Combine: `wrk_01...:st_...`
 
-The provider reads the billing status (balance) and the rolling usage windows
-(24h / 30d spend) from the console JSON API.
+The provider reads the billing status (balance), the rolling usage windows
+(24h / 30d spend) and the Go subscription meters (5h / week / month) from the
+console JSON API.
 
 ## Development
 
