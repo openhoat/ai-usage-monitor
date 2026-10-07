@@ -60,7 +60,7 @@ app.get('*', c => {
 })
 
 export function startServer(port?: number): void {
-  const serverPort = port || parseInt(process.env.PORT || '3000', 10)
+  const serverPort = port || Number.parseInt(process.env.PORT || '3000', 10)
   const server = serve({ fetch: app.fetch, port: serverPort })
   process.stdout.write(`🚀 API backend running at http://localhost:${serverPort}\n`)
   process.stdout.write('   Press Ctrl+C to stop\n')

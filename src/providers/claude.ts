@@ -81,6 +81,15 @@ const BUCKET_LABELS: Record<string, string> = {
   extra_usage: 'Extra Usage',
 }
 
+/** Extract the reset timestamp from a usage bucket, when present. */
+function bucketResetDate(bucket: unknown): string | null {
+  if (bucket && typeof bucket === 'object' && 'resets_at' in bucket) {
+    const value = (bucket as { resets_at?: string | null }).resets_at
+    return value ?? null
+  }
+  return null
+}
+
 function parseRawUsageData(data: RawUsageData): UsageResult | null {
   const tiers: TierUsage[] = []
   let latestResetDate: string | null = null
@@ -88,19 +97,19 @@ function parseRawUsageData(data: RawUsageData): UsageResult | null {
 
   for (const [key, label] of Object.entries(BUCKET_LABELS)) {
     const bucket = data[key as keyof RawUsageData]
-    if (!bucket || bucket.utilization === undefined || bucket.utilization === null) continue
+    if (bucket?.utilization == null) continue
 
     tiers.push({
       name: label,
       percentage: Math.round(bucket.utilization * 100) / 100,
     })
 
-    // Type guard for resets_at
-    if (bucket && typeof bucket === 'object' && 'resets_at' in bucket && bucket.resets_at) {
-      const t = new Date(bucket.resets_at).getTime()
+    const resetDate = bucketResetDate(bucket)
+    if (resetDate) {
+      const t = new Date(resetDate).getTime()
       if (t > latestResetTime) {
         latestResetTime = t
-        latestResetDate = bucket.resets_at
+        latestResetDate = resetDate
       }
     }
   }

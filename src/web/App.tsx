@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { ProviderCard } from './components/ProviderCard'
 import { SettingsModal } from './components/SettingsModal'
 import { PROVIDERS } from './providers'
@@ -18,6 +18,20 @@ async function refreshStatus(): Promise<StatusResponse> {
   return res.json()
 }
 
+async function loadRefreshInterval(): Promise<void> {
+  try {
+    const res = await fetch('/api/config')
+    if (!res.ok) return
+    const data = (await res.json()) as { refresh_interval_minutes?: number }
+    const minutes = data.refresh_interval_minutes
+    if (typeof minutes === 'number' && minutes >= 1) {
+      setRefreshIntervalMs(minutes)
+    }
+  } catch {
+    // Keep the default interval on failure
+  }
+}
+
 function formatTime(iso: string | null): string {
   if (!iso) return ''
   const d = new Date(iso)
@@ -34,6 +48,17 @@ export default function App() {
 
   const hasSuccess = PROVIDERS.some(p => data?.providers[p.id]?.status === 'ok')
   const hasProviders = PROVIDERS.some(p => data?.providers[p.id] !== undefined)
+
+  useEffect(() => {
+    void loadRefreshInterval()
+  }, [])
+
+  let dotClass = 'bg-destructive'
+  if (!hasProviders) {
+    dotClass = 'bg-muted-foreground'
+  } else if (hasSuccess) {
+    dotClass = 'bg-success'
+  }
 
   const handleRefresh = async () => {
     setRefreshing(true)
@@ -68,9 +93,7 @@ export default function App() {
         <div className="mx-auto flex max-w-3xl items-center justify-between px-4 py-3">
           <div className="flex items-center gap-3">
             <span
-              className={`inline-block h-3 w-3 rounded-full ${
-                !hasProviders ? 'bg-muted-foreground' : hasSuccess ? 'bg-success' : 'bg-destructive'
-              }`}
+              className={`inline-block h-3 w-3 rounded-full ${dotClass}`}
               data-testid="global-dot"
             />
             <h1 className="text-lg font-semibold">AI Usage Monitor</h1>

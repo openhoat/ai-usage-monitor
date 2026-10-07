@@ -28,9 +28,9 @@ function TIcon({
   className,
   label,
 }: {
-  children: ReactNode
-  className: string
-  label: string
+  readonly children: ReactNode
+  readonly className: string
+  readonly label: string
 }) {
   return (
     <svg
@@ -50,7 +50,7 @@ function TIcon({
   )
 }
 
-function ClockIcon({ label }: { label: string }) {
+function ClockIcon({ label }: { readonly label: string }) {
   return (
     <TIcon className="text-sky-400" label={label}>
       <circle cx="8" cy="8" r="6" />
@@ -59,7 +59,7 @@ function ClockIcon({ label }: { label: string }) {
   )
 }
 
-function WalletIcon({ label }: { label: string }) {
+function WalletIcon({ label }: { readonly label: string }) {
   return (
     <TIcon className="text-emerald-400" label={label}>
       <rect x="1" y="4" width="14" height="9" rx="1.5" />
@@ -69,7 +69,7 @@ function WalletIcon({ label }: { label: string }) {
   )
 }
 
-function CreditCardIcon({ label }: { label: string }) {
+function CreditCardIcon({ label }: { readonly label: string }) {
   return (
     <TIcon className="text-amber-400" label={label}>
       <rect x="1" y="3.5" width="14" height="9" rx="1.5" />
@@ -79,7 +79,7 @@ function CreditCardIcon({ label }: { label: string }) {
   )
 }
 
-function GaugeIcon({ label }: { label: string }) {
+function GaugeIcon({ label }: { readonly label: string }) {
   return (
     <TIcon className="text-violet-400" label={label}>
       <path d="M2 10a6 6 0 0 1 12 0" />
@@ -89,7 +89,7 @@ function GaugeIcon({ label }: { label: string }) {
   )
 }
 
-function KeyIcon({ label }: { label: string }) {
+function KeyIcon({ label }: { readonly label: string }) {
   return (
     <TIcon className="text-cyan-400" label={label}>
       <circle cx="5" cy="11" r="2.5" />
@@ -100,7 +100,7 @@ function KeyIcon({ label }: { label: string }) {
   )
 }
 
-function InfoIcon({ label }: { label: string }) {
+function InfoIcon({ label }: { readonly label: string }) {
   return (
     <TIcon className="text-muted-foreground" label={label}>
       <circle cx="8" cy="8" r="6" />
@@ -121,7 +121,13 @@ function getTierIcon(name: string): (props: { label: string }) => ReactNode {
   return InfoIcon
 }
 
-export function ProviderCard({ name, result }: { name: string; result: ProviderResult }) {
+export function ProviderCard({
+  name,
+  result,
+}: {
+  readonly name: string
+  readonly result: ProviderResult
+}) {
   const isOk = result.status === 'ok'
 
   return (

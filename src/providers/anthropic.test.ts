@@ -131,6 +131,94 @@ describe('anthropicProvider', () => {
         expect(result.tiers[0].name).toContain('$')
       }
     })
+
+    test('adds per-model tiers from the usage API when billing is present', async () => {
+      mockFetch
+        .mockResolvedValueOnce(
+          jsonResponse({
+            data: [{ id: 'org-1', billing: { monthly_spend: 20, monthly_spend_limit: 100 } }],
+          })
+        )
+        .mockResolvedValueOnce(
+          jsonResponse({
+            data: [
+              { model: 'claude-sonnet-4-6', input_tokens: 2_000_000, output_tokens: 1_000_000 },
+              { model: 'claude-opus-4-7', input_tokens: 1_000_000, output_tokens: 500_000 },
+            ],
+          })
+        )
+
+      const result = await anthropicProvider.fetchUsage('sk-ant-admin-key')
+
+      expect(result.status).toBe('ok')
+      if (result.status === 'ok') {
+        expect(result.tiers[0].name).toContain('$20.00')
+        expect(result.tiers.some(t => t.name.includes('claude-sonnet-4-6'))).toBe(true)
+        expect(result.tiers.some(t => t.name.includes('claude-opus-4-7'))).toBe(true)
+      }
+    })
+
+    test('shows monthly spend when no budget limit is set', async () => {
+      mockFetch
+        .mockResolvedValueOnce(
+          jsonResponse({ data: [{ id: 'org-1', billing: { monthly_spend: 12 } }] })
+        )
+        .mockResolvedValueOnce(jsonResponse({ data: [] }))
+
+      const result = await anthropicProvider.fetchUsage('sk-ant-admin-key')
+
+      expect(result.status).toBe('ok')
+      if (result.status === 'ok') {
+        expect(result.tiers[0]).toEqual({ name: 'Monthly Spend ($12.00)', percentage: 0 })
+        expect(result.overall_percentage).toBe(0)
+      }
+    })
+
+    test('computes spend from the usage API when the org has no billing', async () => {
+      mockFetch
+        .mockResolvedValueOnce(jsonResponse({ data: [{ id: 'org-1' }] }))
+        .mockResolvedValueOnce(
+          jsonResponse({
+            data: [
+              { model: 'claude-sonnet-4-6', input_tokens: 1_000_000, output_tokens: 1_000_000 },
+              { model: 'claude-haiku', input_tokens: 500_000, output_tokens: 500_000 },
+            ],
+          })
+        )
+
+      const result = await anthropicProvider.fetchUsage('sk-ant-admin-key')
+
+      expect(result.status).toBe('ok')
+      if (result.status === 'ok') {
+        expect(result.tiers[0].name).toContain('Monthly Spend')
+        expect(result.overall_percentage).toBe(0)
+        expect(result.tiers.some(t => t.name.includes('claude-sonnet-4-6'))).toBe(true)
+      }
+    })
+
+    test('falls back to models validation when the org has no billing or usage', async () => {
+      mockFetch
+        .mockResolvedValueOnce(jsonResponse({ data: [{ id: 'org-1' }] }))
+        .mockResolvedValueOnce(jsonResponse({ data: [] }))
+        .mockResolvedValueOnce(jsonResponse(sampleModelsResponse))
+
+      const result = await anthropicProvider.fetchUsage('sk-ant-key')
+
+      expect(result.status).toBe('ok')
+      if (result.status === 'ok') {
+        expect(result.tiers[0].name).toContain('models')
+      }
+    })
+
+    test('falls back to models validation when no organizations are returned', async () => {
+      mockFetch
+        .mockResolvedValueOnce(jsonResponse({ data: [] }))
+        .mockResolvedValueOnce(jsonResponse(sampleModelsResponse))
+
+      const result = await anthropicProvider.fetchUsage('sk-ant-key')
+
+      expect(result.status).toBe('ok')
+    })
   })
 
   describe('error handling', () => {

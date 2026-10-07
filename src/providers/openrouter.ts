@@ -22,6 +22,19 @@ function buildHeaders(apiKey: string): Record<string, string> {
   }
 }
 
+function buildTiers(key: OpenRouterKeyData): TierUsage[] {
+  if (key.limit && key.limit > 0) {
+    const used = key.limit_remaining !== null ? key.limit - key.limit_remaining : key.usage
+    return [
+      {
+        name: `Monthly ($${used.toFixed(2)}/$${key.limit.toFixed(0)})`,
+        percentage: Math.round((used / key.limit) * 10000) / 100,
+      },
+    ]
+  }
+  return [{ name: `Monthly Spend ($${key.usage_monthly.toFixed(2)})`, percentage: 0 }]
+}
+
 export const openrouterProvider: Provider = {
   name: 'openrouter',
   async fetchUsage(apiKey: string): Promise<Result> {
@@ -48,23 +61,7 @@ export const openrouterProvider: Provider = {
       }
 
       const data = (await res.json()) as OpenRouterKeyResponse
-      const key = data.data
-
-      const tiers: TierUsage[] = []
-
-      if (key.limit && key.limit > 0) {
-        const used = key.limit_remaining !== null ? key.limit - key.limit_remaining : key.usage
-        const percentage = Math.round((used / key.limit) * 10000) / 100
-        tiers.push({
-          name: `Monthly ($${used.toFixed(2)}/$${key.limit.toFixed(0)})`,
-          percentage,
-        })
-      } else {
-        tiers.push({
-          name: `Monthly Spend ($${key.usage_monthly.toFixed(2)})`,
-          percentage: 0,
-        })
-      }
+      const tiers = buildTiers(data.data)
 
       return {
         status: 'ok',

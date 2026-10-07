@@ -11,9 +11,9 @@ export function SettingsModal({
   onClose,
   onSaved,
 }: {
-  open: boolean
-  onClose: () => void
-  onSaved: () => void
+  readonly open: boolean
+  readonly onClose: () => void
+  readonly onSaved: () => void
 }) {
   const [values, setValues] = useState<Record<string, string>>({})
   const [refreshInterval, setRefreshInterval] = useState<number>(5)

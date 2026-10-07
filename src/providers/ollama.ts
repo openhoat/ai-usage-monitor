@@ -15,97 +15,113 @@ function buildHeaders(sessionCookie: string): Record<string, string> {
   }
 }
 
-export function parseOllamaPage(html: string): UsageResult | null {
+/** Plan badge patterns, tried in order (first capture group = plan name). */
+const PLAN_PATTERNS: RegExp[] = [
+  />Included usage<[\s\S]{0,300}?>(\w+)<\/span\s*>/i,
+  />Cloud usage<[\s\S]{0,500}?>(\w+)</,
+  /Cloud usage[\s\S]{0,200}?badge[^>]*>(\w+)<\//,
+  /data-testid="plan-badge"[^>]*>(\w+)</,
+]
+
+// Monthly usage block: <span>Name</span><span>value</span>.
+const BLOCK_RE =
+  /class="flex justify-between[^>]*>\s*<span[^>]*>(\w[\w\s]*?)<\/span>\s*<span[^>]*>([^<]*)</g
+const DOLLAR_RE = /\$([\d.,]+)\s*of\s*\$([\d.,]+)\s*used/i
+const PCT_RE = /^(\d+(?:\.\d+)?)\s*%\s*used/i
+const METER_RE = /data-usage-meter[\s\S]{0,800}?style="width:\s*([\d.]+)%/
+const BALANCE_RE = />Balance remaining<[\s\S]{0,200}?class="text-2xl[^"]*"[^>]*>\$([\d.,]+)</
+const RESET_RE = /class="[^"]*\blocal-time\b[^"]*"[^>]*?data-time="([^"]+)"/i
+
+/** Return the first capture group of the first matching pattern, or null. */
+function firstCapture(html: string, patterns: RegExp[]): string | null {
+  for (const pattern of patterns) {
+    const match = pattern.exec(html)
+    if (match) return match[1]
+  }
+  return null
+}
+
+/** Extract the plan from the "Included usage" badge (defaults to "free"). */
+function extractPlan(html: string): string {
+  const plan = firstCapture(html, PLAN_PATTERNS)
+  return plan ? plan.trim().toLowerCase() : 'free'
+}
+
+/**
+ * Parse the value text of a usage block into a percentage.
+ * Returns null when the text matches neither the "$X of $Y used" nor the legacy
+ * "N% used" format (the block is then ignored).
+ */
+function parseBlockPercentage(valueText: string): number | null {
+  const dollarMatch = DOLLAR_RE.exec(valueText)
+  if (dollarMatch) {
+    const spent = Number.parseFloat(dollarMatch[1].replaceAll(',', ''))
+    const total = Number.parseFloat(dollarMatch[2].replaceAll(',', ''))
+    return total > 0 ? (spent / total) * 100 : 0
+  }
+  const pctMatch = PCT_RE.exec(valueText)
+  if (pctMatch) return Number.parseFloat(pctMatch[1])
+  return null
+}
+
+/** Extract the monthly usage tiers and the highest percentage seen. */
+function extractMonthlyTiers(html: string): { tiers: TierUsage[]; overall: number } {
   const tiers: TierUsage[] = []
-  let overallPercentage = 0
-  let plan = 'free'
-  let resetDate: string | null = null
-  let resetInHours: number | null = null
+  let overall = 0
 
-  // Extract plan from the "Included usage" badge (new structure)
-  // <h2 ...><span>Included usage</span><span class="...">pro</span></h2>
-  // Note: the closing </span> may be split across lines (e.g. "</span\n>")
-  const planMatch =
-    html.match(/>Included usage<[\s\S]{0,300}?>(\w+)<\/span\s*>/i) ||
-    html.match(/>Cloud usage<[\s\S]{0,500}?>(\w+)</) ||
-    html.match(/Cloud usage[\s\S]{0,200}?badge[^>]*>(\w+)<\//) ||
-    html.match(/data-testid="plan-badge"[^>]*>(\w+)</)
-  if (planMatch) {
-    plan = planMatch[1].trim().toLowerCase()
+  for (const match of html.matchAll(BLOCK_RE)) {
+    const name = match[1].trim()
+    const percentage = parseBlockPercentage(match[2].trim())
+    if (percentage === null) continue
+
+    tiers.push({ name, percentage })
+    if (percentage > overall) overall = percentage
   }
 
-  // Parse the monthly usage block (new structure):
-  // <div class="flex justify-between mb-2">
-  //   <span class="text-sm">Monthly usage</span>
-  //   <span class="text-sm ">$4.32 of $60 used</span>
-  // </div>
-  // Fallback to the legacy "N% used" format.
-  const blockMatches = html.matchAll(
-    /class="flex justify-between[^>]*>\s*<span[^>]*>([\w][\w\s]*?)<\/span>\s*<span[^>]*>[\s\n]*(\$[\d.,]+\s*of\s*\$[\d.,]+\s*used|\d+(?:\.\d+)?\s*% used)/g
-  )
-  for (const blockMatch of blockMatches) {
-    const name = blockMatch[1].trim()
-    const valueText = blockMatch[2].trim()
-
-    let percentage = 0
-
-    // New format: "$4.32 of $60 used" -> percentage = spent / total * 100
-    const dollarMatch = valueText.match(/\$([\d.,]+)\s*of\s*\$([\d.,]+)\s*used/i)
-    if (dollarMatch) {
-      const spent = parseFloat(dollarMatch[1].replace(/,/g, ''))
-      const total = parseFloat(dollarMatch[2].replace(/,/g, ''))
-      if (total > 0) {
-        percentage = (spent / total) * 100
-      }
-    } else {
-      // Legacy format: "3.9% used"
-      const pctMatch = valueText.match(/(\d+(?:\.\d+)?)\s*%\s*used/i)
-      if (pctMatch) {
-        percentage = parseFloat(pctMatch[1])
-      }
-    }
-
-    if (percentage > 0 || name) {
-      tiers.push({ name, percentage })
-
-      if (percentage > overallPercentage) {
-        overallPercentage = percentage
-      }
-    }
-  }
-
-  // Fallback: if no "of $X used" block matched, read the percentage from the
-  // usage meter width style: <div ... style="width: 7.2%; ">
+  // Fallback: read the percentage from the meter width style (e.g. width: 7.2%;).
   if (tiers.length === 0) {
-    const meterMatch = html.match(/data-usage-meter[\s\S]{0,800}?style="width:\s*([\d.]+)%/)
+    const meterMatch = METER_RE.exec(html)
     if (meterMatch) {
-      const percentage = parseFloat(meterMatch[1])
+      const percentage = Number.parseFloat(meterMatch[1])
       tiers.push({ name: 'Monthly usage', percentage })
-      overallPercentage = percentage
+      overall = percentage
     }
   }
 
-  // Extract the extra-usage balance as an additional tier (new structure):
-  // <div class="mb-1 text-xs text-neutral-500">Balance remaining</div>
-  // <div class="text-2xl font-medium leading-tight">$0</div>
-  const balanceMatch = html.match(
-    />Balance remaining<[\s\S]{0,200}?class="text-2xl[^"]*"[^>]*>\$([\d.,]+)</
-  )
-  if (balanceMatch) {
-    const balance = parseFloat(balanceMatch[1].replace(/,/g, ''))
-    tiers.push({ name: 'Balance remaining', percentage: balance })
-  }
+  return { tiers, overall }
+}
 
-  // Look for reset time (local-time can be among multiple CSS classes)
-  const resetMatch = html.match(/class="[^"]*\blocal-time\b[^"]*"[^>]*?data-time="([^"]+)"/i)
-  if (resetMatch) {
-    const resetTimeAttr = resetMatch[1]
-    const resetTime = new Date(resetTimeAttr).getTime()
-    if (!Number.isNaN(resetTime)) {
-      resetInHours = Math.max(0, Math.round((resetTime - Date.now()) / 3600000))
-      resetDate = resetTimeAttr
-    }
+/** Extract the extra-usage balance as an additional tier. */
+function extractBalance(html: string): TierUsage | null {
+  const balanceMatch = BALANCE_RE.exec(html)
+  if (!balanceMatch) return null
+  const balance = Number.parseFloat(balanceMatch[1].replaceAll(',', ''))
+  return { name: 'Balance remaining', percentage: balance }
+}
+
+/** Extract the reset date and remaining hours from the local-time element. */
+function extractReset(html: string): { resetDate: string | null; resetInHours: number | null } {
+  const resetMatch = RESET_RE.exec(html)
+  if (!resetMatch) return { resetDate: null, resetInHours: null }
+
+  const resetTimeAttr = resetMatch[1]
+  const resetTime = new Date(resetTimeAttr).getTime()
+  if (Number.isNaN(resetTime)) return { resetDate: null, resetInHours: null }
+
+  return {
+    resetDate: resetTimeAttr,
+    resetInHours: Math.max(0, Math.round((resetTime - Date.now()) / 3600000)),
   }
+}
+
+export function parseOllamaPage(html: string): UsageResult | null {
+  const plan = extractPlan(html)
+  const { tiers, overall } = extractMonthlyTiers(html)
+
+  const balance = extractBalance(html)
+  if (balance) tiers.push(balance)
+
+  const { resetDate, resetInHours } = extractReset(html)
 
   if (tiers.length === 0) return null
 
@@ -114,7 +130,7 @@ export function parseOllamaPage(html: string): UsageResult | null {
     provider: 'ollama',
     plan,
     tiers,
-    overall_percentage: Math.round(overallPercentage * 100) / 100,
+    overall_percentage: Math.round(overall * 100) / 100,
     reset_date: resetDate,
     reset_in_hours: resetInHours,
   }

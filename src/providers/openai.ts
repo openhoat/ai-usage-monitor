@@ -42,6 +42,19 @@ function getMonthBounds(): { startTime: number; endTime: number } {
   }
 }
 
+function accumulateCosts(costsByModel: Map<string, number>, data: CostsResponse): void {
+  for (const item of data.data) {
+    const model = item.line_item || 'Other'
+    const cents = item.amount?.value ?? 0
+    costsByModel.set(model, (costsByModel.get(model) ?? 0) + cents)
+  }
+}
+
+function nextPageUrl(data: CostsResponse, baseUrl: string): string | null {
+  if (data.has_more && data.next_page) return `${baseUrl}&page=${data.next_page}`
+  return null
+}
+
 async function fetchMonthlyCosts(apiKey: string): Promise<Map<string, number> | null> {
   const headers = buildHeaders(apiKey)
   const { startTime, endTime } = getMonthBounds()
@@ -60,13 +73,8 @@ async function fetchMonthlyCosts(apiKey: string): Promise<Map<string, number> | 
       }
 
       const data = (await res.json()) as CostsResponse
-      for (const item of data.data) {
-        const model = item.line_item || 'Other'
-        const cents = item.amount?.value ?? 0
-        costsByModel.set(model, (costsByModel.get(model) ?? 0) + cents)
-      }
-
-      url = data.has_more && data.next_page ? `${BASE_URL}&page=${data.next_page}` : null
+      accumulateCosts(costsByModel, data)
+      url = nextPageUrl(data, BASE_URL)
     }
   } catch (err) {
     logError(`[openai] Costs API fetch error: ${err instanceof Error ? err.message : String(err)}`)
@@ -100,6 +108,43 @@ async function fetchBudgetLimit(apiKey: string): Promise<number | null> {
   }
 }
 
+function buildTiers(
+  costsByModel: Map<string, number>,
+  totalCents: number,
+  totalDollars: number,
+  budgetLimit: number | null
+): TierUsage[] {
+  const tiers: TierUsage[] = []
+
+  if (budgetLimit && budgetLimit > 0) {
+    tiers.push({
+      name: `Monthly ($${totalDollars.toFixed(2)}/$${budgetLimit.toFixed(0)})`,
+      percentage: Math.round((totalDollars / budgetLimit) * 10000) / 100,
+    })
+  } else {
+    tiers.push({ name: `Monthly Spend ($${totalDollars.toFixed(2)})`, percentage: 0 })
+  }
+
+  const sorted = Array.from(costsByModel.entries())
+    .filter(([, v]) => v > 0)
+    .sort(([, a], [, b]) => b - a)
+    .slice(0, 5)
+
+  for (const [model, cents] of sorted) {
+    tiers.push({
+      name: `${model} ($${(cents / 100).toFixed(2)})`,
+      percentage: totalCents > 0 ? Math.round((cents / totalCents) * 10000) / 100 : 0,
+    })
+  }
+
+  return tiers
+}
+
+function overallPercentage(totalDollars: number, budgetLimit: number | null): number {
+  if (budgetLimit && budgetLimit > 0) return Math.round((totalDollars / budgetLimit) * 10000) / 100
+  return 0
+}
+
 export const openaiProvider: Provider = {
   name: 'openai',
   async fetchUsage(apiKey: string): Promise<Result> {
@@ -115,42 +160,9 @@ export const openaiProvider: Provider = {
 
       const totalCents = Array.from(costsByModel.values()).reduce((sum, v) => sum + v, 0)
       const totalDollars = totalCents / 100
-
       const budgetLimit = await fetchBudgetLimit(apiKey)
 
-      const tiers: TierUsage[] = []
-
-      if (budgetLimit && budgetLimit > 0) {
-        // Show overall usage as percentage of budget
-        tiers.push({
-          name: `Monthly ($${totalDollars.toFixed(2)}/$${budgetLimit.toFixed(0)})`,
-          percentage: Math.round((totalDollars / budgetLimit) * 10000) / 100,
-        })
-      } else {
-        // No budget limit — show spend info as-is
-        tiers.push({
-          name: `Monthly Spend ($${totalDollars.toFixed(2)})`,
-          percentage: 0,
-        })
-      }
-
-      // Add per-model breakdown (top models only)
-      const sorted = Array.from(costsByModel.entries())
-        .filter(([, v]) => v > 0)
-        .sort(([, a], [, b]) => b - a)
-        .slice(0, 5)
-
-      for (const [model, cents] of sorted) {
-        const modelDollars = cents / 100
-        const modelPct = totalCents > 0 ? Math.round((cents / totalCents) * 10000) / 100 : 0
-        tiers.push({
-          name: `${model} ($${modelDollars.toFixed(2)})`,
-          percentage: modelPct,
-        })
-      }
-
-      const overallPercentage =
-        budgetLimit && budgetLimit > 0 ? Math.round((totalDollars / budgetLimit) * 10000) / 100 : 0
+      const tiers = buildTiers(costsByModel, totalCents, totalDollars, budgetLimit)
 
       // Reset at end of month
       const { endTime } = getMonthBounds()
@@ -162,7 +174,7 @@ export const openaiProvider: Provider = {
         provider: 'openai',
         plan: 'api',
         tiers,
-        overall_percentage: overallPercentage,
+        overall_percentage: overallPercentage(totalDollars, budgetLimit),
         reset_date: resetDate,
         reset_in_hours: resetInHours,
       }

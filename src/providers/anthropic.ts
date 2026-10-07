@@ -91,11 +91,10 @@ function estimateModelCost(model: string, inputTokens: number, outputTokens: num
   return (inputTokens / 1_000_000) * 3 + (outputTokens / 1_000_000) * 15
 }
 
-async function tryBillingApi(apiKey: string): Promise<Result | null> {
+/** Fetch the organizations accessible to the API key (Admin API). */
+async function fetchOrganizations(apiKey: string): Promise<OrgInfo[] | null> {
   const headers = buildHeaders(apiKey)
 
-  // Step 1: Get organizations
-  let orgs: OrgInfo[]
   try {
     const orgRes = await fetchWithRetry('https://api.anthropic.com/v1/organizations', {
       headers,
@@ -119,124 +118,128 @@ async function tryBillingApi(apiKey: string): Promise<Result | null> {
     }
 
     const orgData = (await orgRes.json()) as OrgsResponse
-    orgs = orgData.data ?? []
+    return orgData.data ?? []
   } catch (err) {
     logError(
       `[anthropic] Organizations API fetch error: ${err instanceof Error ? err.message : String(err)}`
     )
     return null
   }
+}
 
+/** First tier describing the monthly spend against the budget limit (if any). */
+function monthlyTier(monthlySpend: number, budgetLimit: number): TierUsage {
+  if (budgetLimit > 0) {
+    return {
+      name: `Monthly ($${monthlySpend.toFixed(2)}/$${budgetLimit.toFixed(0)})`,
+      percentage: Math.round((monthlySpend / budgetLimit) * 10000) / 100,
+    }
+  }
+  return { name: `Monthly Spend ($${monthlySpend.toFixed(2)})`, percentage: 0 }
+}
+
+/** Per-model tiers computed from the usage API, relative to `reference` when > 0. */
+function modelUsageTiers(modelUsage: Map<string, ModelUsageData>, reference: number): TierUsage[] {
+  const tiers: TierUsage[] = []
+  for (const [modelName, modelData] of modelUsage) {
+    const cost = estimateModelCost(modelName, modelData.inputTokens, modelData.outputTokens)
+    if (cost > 0) {
+      const pct = reference > 0 ? Math.round((cost / reference) * 10000) / 100 : 0
+      tiers.push({ name: `${modelName} ($${cost.toFixed(2)})`, percentage: pct })
+    }
+  }
+  return tiers
+}
+
+/** Result built from the org billing info (monthly spend + optional per-model usage). */
+async function buildBillingResult(org: OrgInfo, headers: Record<string, string>): Promise<Result> {
+  const monthlySpend = org.billing?.monthly_spend ?? 0
+  const budgetLimit = org.billing?.monthly_spend_limit ?? 0
+  const { endDate, endTime } = getMonthBounds()
+  const resetDate = new Date(endDate).toISOString()
+  const resetInHours = Math.max(0, Math.round((endTime - Date.now()) / 3600000))
+
+  const firstTier = monthlyTier(monthlySpend, budgetLimit)
+  const tiers: TierUsage[] = [firstTier]
+
+  // Also try to get per-model usage
+  const modelUsage = await tryUsageApi(headers, org.id)
+  if (modelUsage && modelUsage.size > 0) {
+    tiers.push(...modelUsageTiers(modelUsage, monthlySpend))
+  }
+
+  return {
+    status: 'ok',
+    provider: 'anthropic',
+    plan: 'api',
+    tiers,
+    overall_percentage: firstTier.percentage,
+    reset_date: resetDate,
+    reset_in_hours: resetInHours,
+  }
+}
+
+/** Result built from the usage API alone (no billing info on the org). */
+async function buildUsageResult(
+  headers: Record<string, string>,
+  orgId: string
+): Promise<Result | null> {
+  const modelUsage = await tryUsageApi(headers, orgId)
+  if (!modelUsage || modelUsage.size === 0) return null
+
+  const { endDate, endTime } = getMonthBounds()
+  const resetDate = new Date(endDate).toISOString()
+  const resetInHours = Math.max(0, Math.round((endTime - Date.now()) / 3600000))
+
+  let totalCost = 0
+  const modelCosts = new Map<string, number>()
+  for (const [modelName, modelData] of modelUsage) {
+    const cost = estimateModelCost(modelName, modelData.inputTokens, modelData.outputTokens)
+    modelCosts.set(modelName, cost)
+    totalCost += cost
+  }
+
+  const tiers: TierUsage[] = [{ name: `Monthly Spend ($${totalCost.toFixed(2)})`, percentage: 0 }]
+
+  // Sort models by cost descending
+  const sorted = Array.from(modelCosts.entries()).sort(([, a], [, b]) => b - a)
+  for (const [modelName, cost] of sorted.slice(0, 5)) {
+    const pct = totalCost > 0 ? Math.round((cost / totalCost) * 10000) / 100 : 0
+    tiers.push({ name: `${modelName} ($${cost.toFixed(2)})`, percentage: pct })
+  }
+
+  return {
+    status: 'ok',
+    provider: 'anthropic',
+    plan: 'api',
+    tiers,
+    overall_percentage: 0,
+    reset_date: resetDate,
+    reset_in_hours: resetInHours,
+  }
+}
+
+async function tryBillingApi(apiKey: string): Promise<Result | null> {
+  const headers = buildHeaders(apiKey)
+
+  // Step 1: Get organizations
+  const orgs = await fetchOrganizations(apiKey)
+  if (!orgs) return null
   if (orgs.length === 0) {
     logError('[anthropic] No organizations found')
     return null
   }
 
   // Step 2: Use first org to get usage data
-  const orgId = orgs[0].id
-  const billing = orgs[0].billing
+  const org = orgs[0]
 
   // If billing info is already in the org response, use it directly
-  if (billing && billing.monthly_spend !== undefined) {
-    const monthlySpend = billing.monthly_spend
-    const budgetLimit = billing.monthly_spend_limit ?? 0
-    const { endDate, endTime } = getMonthBounds()
-    const resetDate = new Date(endDate).toISOString()
-    const resetInHours = Math.max(0, Math.round((endTime - Date.now()) / 3600000))
-
-    const tiers: TierUsage[] = []
-
-    if (budgetLimit > 0) {
-      tiers.push({
-        name: `Monthly ($${monthlySpend.toFixed(2)}/$${budgetLimit.toFixed(0)})`,
-        percentage: Math.round((monthlySpend / budgetLimit) * 10000) / 100,
-      })
-    } else {
-      tiers.push({
-        name: `Monthly Spend ($${monthlySpend.toFixed(2)})`,
-        percentage: 0,
-      })
-    }
-
-    // Also try to get per-model usage
-    const modelUsage = await tryUsageApi(headers, orgId)
-    if (modelUsage && modelUsage.size > 0) {
-      const totalTokens = Array.from(modelUsage.values()).reduce(
-        (sum, m) => sum + m.inputTokens + m.outputTokens,
-        0
-      )
-      if (totalTokens > 0) {
-        for (const [modelName, modelData] of modelUsage) {
-          const cost = estimateModelCost(modelName, modelData.inputTokens, modelData.outputTokens)
-          if (cost > 0) {
-            const pct = monthlySpend > 0 ? Math.round((cost / monthlySpend) * 10000) / 100 : 0
-            tiers.push({
-              name: `${modelName} ($${cost.toFixed(2)})`,
-              percentage: pct,
-            })
-          }
-        }
-      }
-    }
-
-    return {
-      status: 'ok',
-      provider: 'anthropic',
-      plan: 'api',
-      tiers,
-      overall_percentage:
-        budgetLimit > 0 ? Math.round((monthlySpend / budgetLimit) * 10000) / 100 : 0,
-      reset_date: resetDate,
-      reset_in_hours: resetInHours,
-    }
+  if (org.billing?.monthly_spend !== undefined) {
+    return buildBillingResult(org, headers)
   }
 
   // Step 3: If no billing info in org, try usage API to compute costs
-  const modelUsage = await tryUsageApi(headers, orgId)
-  if (modelUsage && modelUsage.size > 0) {
-    const { endDate, endTime } = getMonthBounds()
-    const resetDate = new Date(endDate).toISOString()
-    const resetInHours = Math.max(0, Math.round((endTime - Date.now()) / 3600000))
-
-    const tiers: TierUsage[] = []
-    let totalCost = 0
-
-    // Sort models by cost descending
-    const modelCosts = new Map<string, number>()
-    for (const [modelName, modelData] of modelUsage) {
-      const cost = estimateModelCost(modelName, modelData.inputTokens, modelData.outputTokens)
-      modelCosts.set(modelName, cost)
-      totalCost += cost
-    }
-
-    const sorted = Array.from(modelCosts.entries()).sort(([, a], [, b]) => b - a)
-
-    tiers.push({
-      name: `Monthly Spend ($${totalCost.toFixed(2)})`,
-      percentage: 0, // No budget limit to compare against
-    })
-
-    for (const [modelName, cost] of sorted.slice(0, 5)) {
-      const pct = totalCost > 0 ? Math.round((cost / totalCost) * 10000) / 100 : 0
-      tiers.push({
-        name: `${modelName} ($${cost.toFixed(2)})`,
-        percentage: pct,
-      })
-    }
-
-    return {
-      status: 'ok',
-      provider: 'anthropic',
-      plan: 'api',
-      tiers,
-      overall_percentage: 0,
-      reset_date: resetDate,
-      reset_in_hours: resetInHours,
-    }
-  }
-
-  // No billing or usage data available from Admin API
-  return null
+  return buildUsageResult(headers, org.id)
 }
 
 interface ModelUsageData {

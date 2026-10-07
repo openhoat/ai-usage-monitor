@@ -8,17 +8,20 @@ const USER_AGENT =
 /** Amounts returned by the API are in micro-cents (1e-6 cent = 1e-8 USD). */
 const MICRO_CENTS_PER_USD = 100_000_000
 
+/** A micro-cents amount as returned by the API (string or number), or null when absent. */
+type MicroCents = string | number | null
+
 interface BillingStatus {
   billingMode?: string | null
   mode?: string | null
-  balanceMicroCents?: string | number | null
-  availableMicroCents?: string | number | null
-  creditLimitMicroCents?: string | number | null
+  balanceMicroCents?: MicroCents
+  availableMicroCents?: MicroCents
+  creditLimitMicroCents?: MicroCents
 }
 
 interface UsageSummary {
-  totalRequests?: string | number | null
-  totalCostMicroCents?: string | number | null
+  totalRequests?: MicroCents
+  totalCostMicroCents?: MicroCents
 }
 
 interface Org {
@@ -30,8 +33,8 @@ interface Org {
 interface GoMeter {
   startsAt?: string | null
   resetsAt?: string | null
-  limitMicroCents?: string | number | null
-  usedMicroCents?: string | number | null
+  limitMicroCents?: MicroCents
+  usedMicroCents?: MicroCents
 }
 
 interface GoMeters {
@@ -76,7 +79,7 @@ export function parseCredential(
 }
 
 /** Convert a micro-cents value (string or number) to USD. Returns null when absent/invalid. */
-export function microToUsd(value: string | number | null | undefined): number | null {
+export function microToUsd(value: MicroCents | undefined): number | null {
   if (value === null || value === undefined || value === '') return null
   const parsed = typeof value === 'number' ? value : Number(value)
   if (!Number.isFinite(parsed)) return null
@@ -137,7 +140,7 @@ export function buildGoTiers(go: GoStatus | null): TierUsage[] {
   if (!meters) return []
 
   const tiers: TierUsage[] = []
-  const add = (label: string, meter: GoMeter | null | undefined): void => {
+  const add = (label: string, meter: GoMeter | null): void => {
     if (!meter) return
     const used = microToUsd(meter.usedMicroCents)
     const limit = microToUsd(meter.limitMicroCents)
@@ -146,9 +149,9 @@ export function buildGoTiers(go: GoStatus | null): TierUsage[] {
     tiers.push({ name: `Go ${label} ${formatUsd(used)} / ${formatUsd(limit)}`, percentage })
   }
 
-  add('5h', meters.fiveHour)
-  add('week', meters.week)
-  add('month', meters.month)
+  add('5h', meters.fiveHour ?? null)
+  add('week', meters.week ?? null)
+  add('month', meters.month ?? null)
 
   return tiers
 }
@@ -165,6 +168,34 @@ type FetchOutcome<T> =
   | { kind: 'ok'; data: T }
   | { kind: 'notFound' }
   | { kind: 'error'; error: ErrorResult }
+
+/** Build an error FetchOutcome. */
+function errorOutcome(error_code: string, message: string): FetchOutcome<never> {
+  return { kind: 'error', error: { status: 'error', error_code, message } }
+}
+
+/** Map a thrown fetch error (timeout or network) to an error FetchOutcome. */
+function fetchErrorOutcome(err: unknown): FetchOutcome<never> {
+  const message = err instanceof Error ? err.message : String(err)
+  if (err instanceof DOMException && err.name === 'AbortError') {
+    return errorOutcome('timeout', `Request timed out: ${message}`)
+  }
+  return errorOutcome('network_error', `Network error: ${message}`)
+}
+
+/** The API returns {"_tag":"OrgRequired"} when the org header is missing/invalid. */
+function isOrgRequired(data: unknown): boolean {
+  return data !== null && typeof data === 'object' && !Array.isArray(data) && '_tag' in data
+}
+
+/** Build the error reported when the API returns an OrgRequired tag. */
+function orgRequiredOutcome(data: unknown): FetchOutcome<never> {
+  const tag = (data as { _tag?: string })._tag ?? 'unknown'
+  return errorOutcome(
+    'auth_expired',
+    `opencode.ai API error: ${tag}. Check the workspace ID and session cookie.`
+  )
+}
 
 /** GET a JSON endpoint with the console session cookie and optional org header. */
 async function fetchJson<T>(
@@ -183,28 +214,14 @@ async function fetchJson<T>(
   try {
     res = await fetchWithRetry(url, { headers, redirect: 'follow' })
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err)
-    if (err instanceof DOMException && err.name === 'AbortError') {
-      return {
-        kind: 'error',
-        error: { status: 'error', error_code: 'timeout', message: `Request timed out: ${message}` },
-      }
-    }
-    return {
-      kind: 'error',
-      error: { status: 'error', error_code: 'network_error', message: `Network error: ${message}` },
-    }
+    return fetchErrorOutcome(err)
   }
 
   if (res.status === 401 || res.status === 403) {
-    return {
-      kind: 'error',
-      error: {
-        status: 'error',
-        error_code: 'auth_expired',
-        message: 'Authentication failed. Session cookie may be expired or invalid.',
-      },
-    }
+    return errorOutcome(
+      'auth_expired',
+      'Authentication failed. Session cookie may be expired or invalid.'
+    )
   }
 
   if (res.status === 404) {
@@ -212,41 +229,18 @@ async function fetchJson<T>(
   }
 
   if (!res.ok) {
-    return {
-      kind: 'error',
-      error: {
-        status: 'error',
-        error_code: 'network_error',
-        message: `Unexpected response: HTTP ${res.status}`,
-      },
-    }
+    return errorOutcome('network_error', `Unexpected response: HTTP ${res.status}`)
   }
 
   let data: unknown
   try {
     data = await res.json()
   } catch {
-    return {
-      kind: 'error',
-      error: {
-        status: 'error',
-        error_code: 'network_error',
-        message: 'Invalid JSON response from opencode.ai.',
-      },
-    }
+    return errorOutcome('network_error', 'Invalid JSON response from opencode.ai.')
   }
 
-  // The API returns {"_tag":"OrgRequired"} when the org header is missing/invalid.
-  if (data !== null && typeof data === 'object' && !Array.isArray(data) && '_tag' in data) {
-    const tag = (data as { _tag?: string })._tag ?? 'unknown'
-    return {
-      kind: 'error',
-      error: {
-        status: 'error',
-        error_code: 'auth_expired',
-        message: `opencode.ai API error: ${tag}. Check the workspace ID and session cookie.`,
-      },
-    }
+  if (isOrgRequired(data)) {
+    return orgRequiredOutcome(data)
   }
 
   return { kind: 'ok', data: data as T }
@@ -285,6 +279,30 @@ async function requestJsonOrNull<T>(
   return { ok: false, error: outcome.error }
 }
 
+/** Resolve the org ID from the session when it was not provided in the credential. */
+async function resolveOrgId(
+  sessionCookie: string,
+  orgId: string
+): Promise<{ ok: true; id: string } | { ok: false; error: ErrorResult }> {
+  if (orgId) return { ok: true, id: orgId }
+
+  const orgs = await requestJson<Org[]>(`${API_BASE_URL}/orgs`, sessionCookie, null)
+  if (!orgs.ok) return { ok: false, error: orgs.error }
+
+  const first = Array.isArray(orgs.data) ? orgs.data[0] : undefined
+  if (!first?.id) {
+    return {
+      ok: false,
+      error: {
+        status: 'error',
+        error_code: 'auth_expired',
+        message: 'No workspace found for this session. Session cookie may be expired.',
+      },
+    }
+  }
+  return { ok: true, id: first.id }
+}
+
 export const opencodeProvider: Provider = {
   name: 'opencode',
   async fetchUsage(credential: string): Promise<Result> {
@@ -299,22 +317,9 @@ export const opencodeProvider: Provider = {
     }
 
     const { sessionCookie } = parsed
-    let orgId = parsed.orgId
-
-    // Resolve the org ID from the session when it was not provided.
-    if (!orgId) {
-      const orgs = await requestJson<Org[]>(`${API_BASE_URL}/orgs`, sessionCookie, null)
-      if (!orgs.ok) return orgs.error
-
-      if (!Array.isArray(orgs.data) || orgs.data.length === 0 || !orgs.data[0]?.id) {
-        return {
-          status: 'error',
-          error_code: 'auth_expired',
-          message: 'No workspace found for this session. Session cookie may be expired.',
-        }
-      }
-      orgId = orgs.data[0].id
-    }
+    const resolved = await resolveOrgId(sessionCookie, parsed.orgId)
+    if (!resolved.ok) return resolved.error
+    const orgId = resolved.id
 
     const billing = await requestJson<BillingStatus>(
       `${API_BASE_URL}/billing/status`,

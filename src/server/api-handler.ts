@@ -137,7 +137,7 @@ export function handleGetConfig(): {
 
   for (const [name, key] of fields) {
     const value = config[key]
-    const envKey = key.replace(/_/g, '').toUpperCase()
+    const envKey = key.replaceAll('_', '').toUpperCase()
     const envValue = process.env[envKey] || ''
     result[name] = {
       value: typeof value === 'string' ? value : '',

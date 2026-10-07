@@ -180,6 +180,26 @@ describe('parseOllamaPage', () => {
     const result = parseOllamaPage(LOGIN_PAGE_HTML)
     expect(result).toBeNull()
   })
+
+  test('should ignore usage blocks whose value format is unknown', () => {
+    const html = `<div class="flex justify-between">
+      <span class="text-sm">Monthly usage</span>
+      <span class="text-sm">unlimited</span>
+    </div>`
+    const result = parseOllamaPage(html)
+    expect(result).toBeNull()
+  })
+
+  test('should fall back to the usage meter width', () => {
+    const html = `<div class="relative group" data-usage-meter>
+      <div class="flex h-full overflow-hidden bg-neutral-950" style="width: 7.2%; "></div>
+    </div>`
+    const result = parseOllamaPage(html)
+
+    expect(result).not.toBeNull()
+    expect(result?.tiers).toEqual([{ name: 'Monthly usage', percentage: 7.2 }])
+    expect(result?.overall_percentage).toBe(7.2)
+  })
 })
 
 describe('ollama scraper (real connection)', () => {
@@ -240,7 +260,7 @@ describe('ollama scraper (real connection)', () => {
       console.log('  1. Go to ollama.com/settings')
       console.log('  2. Open DevTools (F12) → Application → Cookies')
       console.log('  3. Copy the value of __Secure-session')
-      expect(true).toBe(true)
+      expect(process.env.OLLAMA_SESSION_COOKIE).toBeUndefined()
     })
   })
 })

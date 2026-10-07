@@ -69,6 +69,23 @@ describe('claudeProvider', () => {
       const usageUrl = mockFetch.mock.calls[1][0] as string
       expect(usageUrl).toContain('org-pro')
     })
+
+    test('ignores buckets without a reset timestamp', async () => {
+      mockFetch.mockResolvedValueOnce(jsonResponse(sampleOrgs)).mockResolvedValueOnce(
+        jsonResponse({
+          five_hour: { utilization: 10, resets_at: '2026-03-01T00:00:00Z' },
+          extra_usage: { utilization: 4.2 },
+        })
+      )
+
+      const result = await claudeProvider.fetchUsage('test-token')
+
+      expect(result.status).toBe('ok')
+      if (result.status === 'ok') {
+        expect(result.tiers.some(t => t.name === 'Extra Usage')).toBe(true)
+        expect(result.reset_date).toBe('2026-03-01T00:00:00Z')
+      }
+    })
   })
 
   describe('error handling', () => {

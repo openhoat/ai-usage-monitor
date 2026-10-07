@@ -13,25 +13,14 @@ import {
 // ---------------------------------------------------------------------------
 
 describe('parseCredential', () => {
-  test('returns orgId and sessionCookie for "orgId:sessionCookie"', () => {
-    const result = parseCredential('wrk_01ABC:st_123')
-    expect(result).not.toBeNull()
-    expect(result?.orgId).toBe('wrk_01ABC')
-    expect(result?.sessionCookie).toBe('st_123')
-  })
-
-  test('handles a cookie value that contains colons', () => {
-    const result = parseCredential('wrk_01ABC:part1:part2:part3')
-    expect(result).not.toBeNull()
-    expect(result?.orgId).toBe('wrk_01ABC')
-    expect(result?.sessionCookie).toBe('part1:part2:part3')
-  })
-
-  test('accepts a bare session cookie (orgId resolved later)', () => {
-    const result = parseCredential('st_c19366f1-ba32')
-    expect(result).not.toBeNull()
-    expect(result?.orgId).toBe('')
-    expect(result?.sessionCookie).toBe('st_c19366f1-ba32')
+  test.each([
+    ['wrk_01ABC:st_123', 'wrk_01ABC', 'st_123'],
+    ['wrk_01ABC:part1:part2:part3', 'wrk_01ABC', 'part1:part2:part3'],
+    ['st_c19366f1-ba32', '', 'st_c19366f1-ba32'],
+  ])('parses "%s" into orgId and sessionCookie', (input, orgId, sessionCookie) => {
+    const result = parseCredential(input)
+    expect(result?.orgId).toBe(orgId)
+    expect(result?.sessionCookie).toBe(sessionCookie)
   })
 
   test('returns null when the cookie is empty', () => {
@@ -222,7 +211,7 @@ describe('opencode scraper (real connection)', () => {
       console.log('  2. Copy the value of the "__Host-console_session" cookie')
       console.log('  3. Copy the workspace ID from the URL (wrk_...)')
       console.log('  4. Combine: export OPENCODE_SESSION="wrk_01...:st_..."')
-      expect(true).toBe(true)
+      expect(process.env.OPENCODE_SESSION).toBeUndefined()
     })
   })
 })
