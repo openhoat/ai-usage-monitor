@@ -131,8 +131,7 @@ export function handleGetConfig(): {
     ['gemini', 'gemini_api_key'],
     ['openai', 'openai_api_key'],
     ['ollama', 'ollama_session_cookie'],
-    ['opencode-zen', 'opencode_zen_session'],
-    ['opencode-go', 'opencode_go_session'],
+    ['opencode', 'opencode_session'],
     ['openrouter', 'openrouter_api_key'],
   ]
 
@@ -158,8 +157,7 @@ export function handleSaveConfig(body: ProviderConfig): { success: boolean; mess
   if (body.gemini_api_key) merged.gemini_api_key = body.gemini_api_key
   if (body.openai_api_key) merged.openai_api_key = body.openai_api_key
   if (body.ollama_session_cookie) merged.ollama_session_cookie = body.ollama_session_cookie
-  if (body.opencode_zen_session) merged.opencode_zen_session = body.opencode_zen_session
-  if (body.opencode_go_session) merged.opencode_go_session = body.opencode_go_session
+  if (body.opencode_session) merged.opencode_session = body.opencode_session
   if (body.openrouter_api_key) merged.openrouter_api_key = body.openrouter_api_key
   if (body.refresh_interval_minutes >= 1) {
     merged.refresh_interval_minutes = body.refresh_interval_minutes

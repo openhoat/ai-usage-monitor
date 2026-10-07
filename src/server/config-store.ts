@@ -8,15 +8,20 @@ export interface ProviderConfig {
   gemini_api_key: string
   openai_api_key: string
   ollama_session_cookie: string
-  opencode_go_session: string
-  opencode_zen_session: string
+  opencode_session: string
   openrouter_api_key: string
   refresh_interval_minutes: number
 }
 
+/** Legacy keys kept for backward-compatible migration (opencode-go + opencode-zen merged). */
+interface LegacyProviderConfig {
+  opencode_go_session?: string
+  opencode_zen_session?: string
+}
+
 const CONFIG_FILE = join(homedir(), '.config', 'ai-usage-monitor', 'config.json')
 
-function loadFromFile(): Partial<ProviderConfig> {
+function loadFromFile(): Partial<ProviderConfig> & LegacyProviderConfig {
   try {
     if (existsSync(CONFIG_FILE)) {
       return JSON.parse(readFileSync(CONFIG_FILE, 'utf-8'))
@@ -46,8 +51,14 @@ export function loadConfig(): ProviderConfig {
     openai_api_key:
       file.openai_api_key || process.env.OPENAI_ADMIN_KEY || process.env.OPENAI_API_KEY || '',
     ollama_session_cookie: file.ollama_session_cookie || process.env.OLLAMA_SESSION_COOKIE || '',
-    opencode_go_session: file.opencode_go_session || process.env.OPENCODE_GO_SESSION || '',
-    opencode_zen_session: file.opencode_zen_session || process.env.OPENCODE_ZEN_SESSION || '',
+    opencode_session:
+      file.opencode_session ||
+      process.env.OPENCODE_SESSION ||
+      file.opencode_zen_session ||
+      process.env.OPENCODE_ZEN_SESSION ||
+      file.opencode_go_session ||
+      process.env.OPENCODE_GO_SESSION ||
+      '',
     openrouter_api_key: file.openrouter_api_key || process.env.OPENROUTER_API_KEY || '',
     refresh_interval_minutes:
       file.refresh_interval_minutes ?? parseRefreshInterval(process.env.REFRESH_INTERVAL_MINUTES),
@@ -100,11 +111,8 @@ export function getConfigForProviders(config: ProviderConfig): Array<{
   if (config.ollama_session_cookie) {
     configured.push({ provider: 'ollama', credential: config.ollama_session_cookie })
   }
-  if (config.opencode_zen_session) {
-    configured.push({ provider: 'opencode-zen', credential: config.opencode_zen_session })
-  }
-  if (config.opencode_go_session) {
-    configured.push({ provider: 'opencode-go', credential: config.opencode_go_session })
+  if (config.opencode_session) {
+    configured.push({ provider: 'opencode', credential: config.opencode_session })
   }
   if (config.openrouter_api_key) {
     configured.push({ provider: 'openrouter', credential: config.openrouter_api_key })

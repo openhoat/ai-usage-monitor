@@ -24,8 +24,7 @@
 | **Gemini** (Google AI) | API key | Available models |
 | **OpenAI** (ChatGPT) | Admin API key | Monthly costs by model |
 | **Ollama** (cloud) | Session cookie | Usage percentage |
-| **OpenCode Go** | workspaceId:authCookie | Rolling, weekly, monthly usage |
-| **OpenCode Zen** | workspaceId:authCookie | Balance, monthly spend |
+| **OpenCode** | workspaceId:sessionCookie | Balance, 24h / 30d spend |
 | **OpenRouter** | API key | Monthly spend, limit |
 
 ## Features
@@ -132,8 +131,7 @@ Credentials are loaded from the local config file
 | `GEMINI_API_KEY` | Gemini |
 | `OPENAI_ADMIN_KEY` / `OPENAI_API_KEY` | OpenAI |
 | `OLLAMA_SESSION_COOKIE` | Ollama |
-| `OPENCODE_GO_SESSION` | OpenCode Go (workspaceId:authCookie) |
-| `OPENCODE_ZEN_SESSION` | OpenCode Zen (workspaceId:authCookie) |
+| `OPENCODE_SESSION` | OpenCode (workspaceId:sessionCookie) |
 | `OPENROUTER_API_KEY` | OpenRouter |
 | `REFRESH_INTERVAL_MINUTES` | Default auto-refresh interval (default `5`) |
 
@@ -146,6 +144,19 @@ request arrives after the cache has expired (lazy re-fetch — no background tra
 ### Claude credential format
 
 Claude requires a `sessionKey:routingHint` format. The `routingHint` (JWT `sk-ant-rh-...`) is necessary to pass Cloudflare's TLS fingerprint check when calling from Node.js.
+
+### OpenCode credential format
+
+OpenCode uses the console session cookie, in the `workspaceId:sessionCookie` format
+(the workspace ID can be omitted — it is then resolved automatically):
+
+1. Sign in at `https://opencode.ai/console`
+2. Open DevTools (F12) → Application → Cookies → copy the `__Host-console_session` value (`st_...`)
+3. Copy the workspace ID (`wrk_...`) from the console URL
+4. Combine: `wrk_01...:st_...`
+
+The provider reads the billing status (balance) and the rolling usage windows
+(24h / 30d spend) from the console JSON API.
 
 ## Development
 

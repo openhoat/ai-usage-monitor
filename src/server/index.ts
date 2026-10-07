@@ -36,10 +36,7 @@ app.put('/api/config', async c => {
     openai_api_key: typeof body.openai_api_key === 'string' ? body.openai_api_key : '',
     ollama_session_cookie:
       typeof body.ollama_session_cookie === 'string' ? body.ollama_session_cookie : '',
-    opencode_go_session:
-      typeof body.opencode_go_session === 'string' ? body.opencode_go_session : '',
-    opencode_zen_session:
-      typeof body.opencode_zen_session === 'string' ? body.opencode_zen_session : '',
+    opencode_session: typeof body.opencode_session === 'string' ? body.opencode_session : '',
     openrouter_api_key: typeof body.openrouter_api_key === 'string' ? body.openrouter_api_key : '',
     refresh_interval_minutes:
       typeof body.refresh_interval_minutes === 'number' ? body.refresh_interval_minutes : 0,

@@ -35,18 +35,11 @@ export const PROVIDERS = [
     hint: 'ollama.com → F12 → Application → Cookies → __Secure-session',
   },
   {
-    id: 'opencode-zen',
-    label: 'OpenCode Zen',
-    configKey: 'opencode_zen_session',
-    placeholder: 'wrk_01...:eyJ...',
-    hint: 'opencode.ai → workspace URL (ID) : F12 → Cookies → auth',
-  },
-  {
-    id: 'opencode-go',
-    label: 'OpenCode Go',
-    configKey: 'opencode_go_session',
-    placeholder: 'wrk_01...:eyJ...',
-    hint: 'opencode.ai → workspace URL (ID) : F12 → Cookies → auth',
+    id: 'opencode',
+    label: 'OpenCode',
+    configKey: 'opencode_session',
+    placeholder: 'wrk_01...:st_...',
+    hint: 'opencode.ai/console → F12 → Cookies → __Host-console_session (+ workspace ID wrk_... de l’URL)',
   },
   {
     id: 'openrouter',
