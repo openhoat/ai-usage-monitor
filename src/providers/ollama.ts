@@ -18,6 +18,7 @@ function buildHeaders(sessionCookie: string): Record<string, string> {
 /** Plan badge patterns, tried in order (first capture group = plan name). */
 const PLAN_PATTERNS: RegExp[] = [
   />Included usage<[\s\S]{0,300}?>(\w+)<\/span\s*>/i,
+  />Usage credits<[\s\S]{0,300}?>(\w+)<\/span\s*>/i,
   />Cloud usage<[\s\S]{0,500}?>(\w+)</,
   /Cloud usage[\s\S]{0,200}?badge[^>]*>(\w+)<\//,
   /data-testid="plan-badge"[^>]*>(\w+)</,
@@ -29,8 +30,20 @@ const BLOCK_RE =
 const DOLLAR_RE = /\$([\d.,]+)\s*of\s*\$([\d.,]+)\s*used/i
 const PCT_RE = /^(\d+(?:\.\d+)?)\s*%\s*used/i
 const METER_RE = /data-usage-meter[\s\S]{0,800}?style="width:\s*([\d.]+)%/
-const BALANCE_RE = />Balance remaining<[\s\S]{0,200}?class="text-2xl[^"]*"[^>]*>\$([\d.,]+)</
+// Current (2026-10) structure: the block only shows the amount used ($300) while
+// the total lives in the meter aria-label ("Monthly credits used: $300 of $300").
+const MONTHLY_RE = /Monthly credits used:\s*\$([\d.,]+)\s*of\s*\$([\d.,]+)/i
+// Balance patterns, tried in order (first capture group = dollar amount).
+const BALANCE_PATTERNS: Array<{ re: RegExp; name: string }> = [
+  { re: /id="usage-credits-balance"[^>]*>\$([\d.,]+)</, name: 'Usage credits' },
+  {
+    re: />Balance remaining<[\s\S]{0,200}?class="text-2xl[^"]*"[^>]*>\$([\d.,]+)</,
+    name: 'Balance remaining',
+  },
+]
 const RESET_RE = /class="[^"]*\blocal-time\b[^"]*"[^>]*?data-time="([^"]+)"/i
+// Current (2026-10) structure: reset is plain text ("Refills to $300 in 3 days.").
+const REFILL_RE = /Refills to\s*\$[\d.,]+\s*in\s*(\d+)\s*days?/i
 
 /** Return the first capture group of the first matching pattern, or null. */
 function firstCapture(html: string, patterns: RegExp[]): string | null {
@@ -69,6 +82,17 @@ function extractMonthlyTiers(html: string): { tiers: TierUsage[]; overall: numbe
   const tiers: TierUsage[] = []
   let overall = 0
 
+  // Current (2026-10) structure: used/total from the monthly meter aria-label.
+  const monthly = MONTHLY_RE.exec(html)
+  if (monthly) {
+    const used = Number.parseFloat(monthly[1].replaceAll(',', ''))
+    const total = Number.parseFloat(monthly[2].replaceAll(',', ''))
+    const percentage = total > 0 ? (used / total) * 100 : 0
+    tiers.push({ name: 'Monthly usage', percentage })
+    overall = percentage
+  }
+
+  // Legacy structure: "<span>Name</span><span>$X of $Y used</span>" blocks.
   for (const match of html.matchAll(BLOCK_RE)) {
     const name = match[1].trim()
     const percentage = parseBlockPercentage(match[2].trim())
@@ -93,14 +117,23 @@ function extractMonthlyTiers(html: string): { tiers: TierUsage[]; overall: numbe
 
 /** Extract the extra-usage balance as an additional tier. */
 function extractBalance(html: string): TierUsage | null {
-  const balanceMatch = BALANCE_RE.exec(html)
-  if (!balanceMatch) return null
-  const balance = Number.parseFloat(balanceMatch[1].replaceAll(',', ''))
-  return { name: 'Balance remaining', percentage: balance }
+  for (const { re, name } of BALANCE_PATTERNS) {
+    const match = re.exec(html)
+    if (!match) continue
+    const balance = Number.parseFloat(match[1].replaceAll(',', ''))
+    return { name, percentage: balance }
+  }
+  return null
 }
 
 /** Extract the reset date and remaining hours from the local-time element. */
 function extractReset(html: string): { resetDate: string | null; resetInHours: number | null } {
+  // Current (2026-10) structure: "Refills to $300 in 3 days." (no absolute date).
+  const refillMatch = REFILL_RE.exec(html)
+  if (refillMatch) {
+    return { resetDate: null, resetInHours: Number.parseInt(refillMatch[1], 10) * 24 }
+  }
+
   const resetMatch = RESET_RE.exec(html)
   if (!resetMatch) return { resetDate: null, resetInHours: null }
 

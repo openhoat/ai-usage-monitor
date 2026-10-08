@@ -5,10 +5,9 @@ const OLLAMA_SETTINGS_URL = 'https://ollama.com/settings'
 
 const USER_AGENT = 'Mozilla/5.0 (X11; Linux x86_64; rv:137.0) Gecko/20100101 Firefox/137.0'
 
-// Mock HTML fixture matching the current ollama.com/settings structure
-// (captured 2026-09-06). Includes the "Included usage" section, the
-// "$X of $Y used" monthly meter, the balance remaining block and the
-// local-time reset element.
+// Mock HTML fixture matching the ollama.com/settings structure captured
+// 2026-09-06. Includes the "Included usage" section, the "$X of $Y used"
+// monthly meter, the balance remaining block and the local-time reset element.
 const MOCK_SETTINGS_HTML = `<!doctype html>
 <html>
   <head><title>Usage · Settings</title></head>
@@ -73,6 +72,52 @@ const LEGACY_SETTINGS_HTML = `<!doctype html>
   </body>
 </html>`
 
+// Current ollama.com/settings structure (captured 2026-10-08). The "Included
+// usage" section became "Usage credits" (with the plan badge moved there), the
+// monthly block only shows the amount used while the total lives in the meter
+// aria-label, and the reset is plain text ("Refills to $300 in 3 days.").
+const CURRENT_SETTINGS_HTML = `<!doctype html>
+<html class="h-full overflow-y-scroll">
+  <head><title>Usage · Settings</title></head>
+  <body>
+    <div id="extra-usage" class="flex flex-col gap-6">
+      <div class="space-y-1">
+        <div class="flex items-baseline justify-between gap-4">
+          <h2 class="flex items-center gap-2 text-xl font-medium">Usage credits<span class="text-xs font-normal px-2 py-0.5 rounded-full bg-neutral-100 text-neutral-600 capitalize">max</span></h2>
+          <span id="usage-credits-balance" class="text-xl font-medium tabular-nums">$0</span>
+        </div>
+        <div class="flex items-center justify-between gap-4">
+          <p class="text-xs text-neutral-500">Refills to $300 in 3 days.</p>
+        </div>
+      </div>
+    </div>
+
+    <h2 class="text-xl font-medium pt-4">Usage breakdown</h2>
+    <p class="text-xs text-neutral-500 mb-4">
+      This breakdown shows how cloud models and capabilities such as web search
+      consumed your monthly included usage.
+    </p>
+
+    <div>
+      <div class="flex justify-between mb-2">
+        <span class="text-sm">Monthly credits used</span>
+        <span class="text-sm tabular-nums">$300</span>
+      </div>
+      <div class="relative group" data-usage-meter>
+        <div class="absolute bottom-6 left-[var(--usage-bubble-x,50%)] z-10 inline-flex max-w-[min(260px,100%)] -translate-x-1/2 flex-col items-start gap-0.5 rounded-xl border border-neutral-300 bg-white/95 px-2.5 pt-[7px] pb-2 text-neutral-900 opacity-0 pointer-events-none whitespace-nowrap backdrop-blur-md group-[.usage-meter--active]:opacity-100" data-usage-bubble aria-hidden="true">
+          <span class="max-w-[190px] overflow-hidden text-ellipsis text-xs font-medium leading-[1.2]" data-usage-model></span>
+          <span class="text-[11px] leading-[1.2] text-neutral-500" data-usage-requests></span>
+        </div>
+        <div class="relative h-3 overflow-hidden rounded-full bg-neutral-200" data-usage-track aria-label="Monthly credits used: $300 of $300">
+          <div class="flex h-full overflow-hidden bg-neutral-950" style="width: 100%; ">
+            <button type="button" data-usage-segment data-model="deepseek-v4-flash:0731" data-requests="4901" aria-label="deepseek-v4-flash:0731: 4901 requests"></button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </body>
+</html>`
+
 // WorkOS AuthKit login page fixture
 const LOGIN_PAGE_HTML = `<!doctype html>
 <html data-dpl-id="hosted-authkit-3bc070dfd073a44f17dfb05485546e63b13eb277">
@@ -127,7 +172,7 @@ async function fetchSettingsPage(sessionCookie: string): Promise<string | null> 
 }
 
 describe('parseOllamaPage', () => {
-  test('should parse plan, monthly usage and balance from current structure', () => {
+  test('should parse plan, monthly usage and balance from the 2026-09 structure', () => {
     const result = parseOllamaPage(MOCK_SETTINGS_HTML)
 
     expect(result).not.toBeNull()
@@ -151,6 +196,31 @@ describe('parseOllamaPage', () => {
     // Reset time
     expect(result?.reset_date).toBe('2026-09-24T09:40:39Z')
     expect(result?.reset_in_hours).not.toBeNull()
+  })
+
+  test('should parse the 2026-10 structure (Usage credits + monthly credits used)', () => {
+    const result = parseOllamaPage(CURRENT_SETTINGS_HTML)
+
+    expect(result).not.toBeNull()
+    expect(result?.status).toBe('ok')
+    expect(result?.provider).toBe('ollama')
+    expect(result?.plan).toBe('max')
+
+    // Monthly usage: $300 of $300 -> 100%
+    const monthly = result?.tiers.find(t => t.name === 'Monthly usage')
+    expect(monthly).toBeDefined()
+    expect(monthly?.percentage).toBe(100)
+
+    // Usage credits balance: $0
+    const balance = result?.tiers.find(t => t.name === 'Usage credits')
+    expect(balance).toBeDefined()
+    expect(balance?.percentage).toBe(0)
+
+    expect(result?.overall_percentage).toBe(100)
+
+    // Reset: "Refills to $300 in 3 days." -> 72h, no absolute date
+    expect(result?.reset_date).toBeNull()
+    expect(result?.reset_in_hours).toBe(72)
   })
 
   test('should parse legacy "N% used" structure', () => {
@@ -220,7 +290,7 @@ describe('ollama scraper (real connection)', () => {
 
       console.log('Settings page length:', html?.length || 0)
       expect(html).not.toBeNull()
-      expect(html).toContain('Included usage')
+      expect(html).toContain('Usage')
     })
 
     test('should scrape usage data from real page', async () => {
