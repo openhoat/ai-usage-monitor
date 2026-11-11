@@ -1,7 +1,9 @@
-import { describe, expect, test } from 'vitest'
-import { parseOllamaPage } from './ollama.js'
+import { describe, expect, test, vi } from 'vitest'
+import { parseBillingPage, parseCostReport, parseOllamaPage } from './ollama.js'
 
 const OLLAMA_SETTINGS_URL = 'https://ollama.com/settings'
+const OLLAMA_COST_REPORT_URL = 'https://ollama.com/settings/usage/report?scope=self'
+const OLLAMA_BILLING_URL = 'https://ollama.com/settings/billing'
 
 const USER_AGENT = 'Mozilla/5.0 (X11; Linux x86_64; rv:137.0) Gecko/20100101 Firefox/137.0'
 
@@ -132,12 +134,98 @@ const LOGIN_PAGE_HTML = `<!doctype html>
   </body>
 </html>`
 
+// Current ollama.com/settings structure (captured 2026-11-11): the page is a
+// shell whose cost report loads over htmx, so it carries no usage data at all.
+const SETTINGS_SHELL_HTML = `<!doctype html>
+<html class="h-full overflow-y-scroll">
+  <head><title>Usage · Settings</title></head>
+  <body>
+    <div class="group/settings flex w-full flex-1 flex-col lg:flex-row" data-page="usage">
+      <section id="settings-sections" class="min-w-0 w-full">
+        <div class="mx-auto min-w-0 max-w-3xl tabular-nums text-ink">
+          <header class="flex flex-wrap items-center gap-x-4 gap-y-3">
+            <h1 class="text-heading font-semibold">Usage</h1>
+            <div class="ml-auto flex flex-wrap items-center gap-2">
+              <span class="text-ui font-semibold">November 2026</span>
+            </div>
+          </header>
+          <div id="usage-cost-report" data-usage-async aria-busy="true">
+            <div data-usage-loading>
+              <section class="pt-8" aria-label="Loading cost report">
+                <h2 class="text-headline font-semibold">Cost</h2>
+                <p class="mt-0.5 text-ui text-muted">Nov 1–11, UTC</p>
+              </section>
+            </div>
+            <div id="usage-cost-report-content" data-usage-content hx-get="/settings/usage/report?scope=self" hx-trigger="load, retry" hx-swap="innerHTML"></div>
+          </div>
+        </div>
+      </section>
+    </div>
+  </body>
+</html>`
+
+// Cost report fragment returned by the htmx request (captured 2026-11-11).
+const COST_REPORT_HTML = `<section class="pt-8" aria-labelledby="usage-cost-title">
+  <div class="mb-5" title="Last updated Nov 11, 2026 08:25:17 UTC">
+    <h2 id="usage-cost-title" class="text-headline font-semibold">Cost</h2>
+    <p class="mt-0.5 text-ui text-muted">Nov 1–11, UTC</p>
+  </div>
+  <dl class="grid grid-cols-2 gap-x-6 gap-y-6 sm:grid-cols-4">
+    <div class="min-w-0">
+      <dt class="text-ui text-muted">Total cost</dt>
+      <dd class="mt-1 text-stat font-semibold">$57.34</dd>
+    </div>
+    <div class="min-w-0">
+      <dt class="text-ui text-muted">Model cost</dt>
+      <dd class="mt-1 text-stat font-semibold">$57.34</dd>
+    </div>
+    <div class="min-w-0">
+      <dt class="text-ui text-muted">Requests</dt>
+      <dd class="mt-1 text-stat font-semibold">19,458</dd>
+    </div>
+  </dl>
+  <table>
+    <thead><tr><th>Model</th><th>Requests</th><th>Input</th><th>Output</th><th>Cost</th></tr></thead>
+    <tbody aria-hidden="true"><tr><td colspan="5" class="h-36"></td></tr></tbody>
+  </table>
+</section>`
+
+// Plan & billing page (captured 2026-11-11): plan and renewal live here now.
+const BILLING_HTML = `<!doctype html>
+<html class="h-full overflow-y-scroll">
+  <head><title>Plan & Billing · Settings</title></head>
+  <body>
+    <div class="flex flex-col space-y-10">
+      <div class="flex w-full flex-col items-start rounded-2xl border border-rule p-6">
+        <span class="font-semibold">Current plan: Pro </span>
+        <p class="text-sm text-neutral-800 mt-2 mb-4">
+          Your subscription renews on <span class="font-semibold">November 11, 2026 </span>.
+        </p>
+        <div class="flex gap-2 flex-wrap">
+          <a href="/upgrade?plan=max">Upgrade to Max</a>
+          <a href="/manage-subscription">Manage my subscription</a>
+        </div>
+      </div>
+      <h2>Invoices</h2>
+      <table>
+        <thead><tr><th>Date</th><th>Due</th><th>Total</th><th>Status</th></tr></thead>
+        <tbody><tr><td>November 9, 2026</td><td>November 9, 2026</td><td>$20.00</td><td>Paid</td></tr></tbody>
+      </table>
+    </div>
+  </body>
+</html>`
+
+// Free account: no subscription block at all.
+const BILLING_FREE_HTML = `<!doctype html>
+<html><head><title>Plan & Billing · Settings</title></head>
+<body><h1>Plan &amp; Billing</h1><a href="/upgrade?plan=pro">Upgrade</a></body></html>`
+
 /**
- * Fetch settings page with session cookie
+ * Fetch an ollama.com page with session cookie
  */
-async function fetchSettingsPage(sessionCookie: string): Promise<string | null> {
+async function fetchPage(url: string, sessionCookie: string): Promise<string | null> {
   try {
-    const res = await fetch(OLLAMA_SETTINGS_URL, {
+    const res = await fetch(url, {
       headers: {
         'User-Agent': USER_AGENT,
         Accept: 'text/html',
@@ -166,7 +254,7 @@ async function fetchSettingsPage(sessionCookie: string): Promise<string | null> 
 
     return html
   } catch (error) {
-    console.error('Fetch settings error:', error)
+    console.error('Fetch error:', error)
     return null
   }
 }
@@ -270,6 +358,45 @@ describe('parseOllamaPage', () => {
     expect(result?.tiers).toEqual([{ name: 'Monthly usage', percentage: 7.2 }])
     expect(result?.overall_percentage).toBe(7.2)
   })
+
+  // Regression for the 2026-11 redesign: /settings is now an async shell, so the
+  // inline parser finds nothing and the provider must read the htmx report.
+  test('should find no usage data on the 2026-11 settings shell', () => {
+    expect(parseOllamaPage(SETTINGS_SHELL_HTML)).toBeNull()
+  })
+})
+
+describe('parseCostReport', () => {
+  test('should read the month-to-date cost of the htmx report fragment', () => {
+    const tier = parseCostReport(COST_REPORT_HTML)
+    expect(tier).toEqual({ name: 'Monthly cost $57.34', percentage: 0 })
+  })
+
+  test('should return null when the report carries no total cost', () => {
+    expect(parseCostReport('<section><dl></dl></section>')).toBeNull()
+  })
+})
+
+describe('parseBillingPage', () => {
+  test('should read the plan and the renewal date', () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-11-01T00:00:00Z'))
+    try {
+      const info = parseBillingPage(BILLING_HTML)
+      expect(info.plan).toBe('pro')
+      expect(info.resetDate).toBe('2026-11-11T00:00:00.000Z')
+      expect(info.resetInHours).toBe(240)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  test('should report no plan and no reset for a free account', () => {
+    const info = parseBillingPage(BILLING_FREE_HTML)
+    expect(info.plan).toBeNull()
+    expect(info.resetDate).toBeNull()
+    expect(info.resetInHours).toBeNull()
+  })
 })
 
 describe('ollama scraper (real connection)', () => {
@@ -278,47 +405,37 @@ describe('ollama scraper (real connection)', () => {
 
   const hasCredentials = Boolean(sessionCookie)
 
-  describe.skipIf(!hasCredentials)('with session cookie', () => {
-    test('should fetch settings page with session cookie', async () => {
-      // Format the cookie header - check if it already has the cookie name prefix
-      const cookieHeader = sessionCookie!.startsWith('__Secure-session=')
-        ? sessionCookie!
-        : `__Secure-session=${sessionCookie}`
+  const cookieHeader = sessionCookie?.startsWith('__Secure-session=')
+    ? sessionCookie
+    : `__Secure-session=${sessionCookie}`
 
-      // Fetch settings
-      const html = await fetchSettingsPage(cookieHeader)
+  describe.skipIf(!hasCredentials)('with session cookie', () => {
+    test('should fetch the settings shell with session cookie', async () => {
+      const html = await fetchPage(OLLAMA_SETTINGS_URL, cookieHeader!)
 
       console.log('Settings page length:', html?.length || 0)
       expect(html).not.toBeNull()
       expect(html).toContain('Usage')
     })
 
-    test('should scrape usage data from real page', async () => {
-      // Format the cookie header - check if it already has the cookie name prefix
-      const cookieHeader = sessionCookie!.startsWith('__Secure-session=')
-        ? sessionCookie!
-        : `__Secure-session=${sessionCookie}`
+    test('should scrape the cost report and the billing plan from real pages', async () => {
+      const settings = await fetchPage(OLLAMA_SETTINGS_URL, cookieHeader!)
+      const report = await fetchPage(OLLAMA_COST_REPORT_URL, cookieHeader!)
+      const billing = await fetchPage(OLLAMA_BILLING_URL, cookieHeader!)
+      expect(settings).not.toBeNull()
+      expect(report).not.toBeNull()
 
-      // Fetch and parse
-      const html = await fetchSettingsPage(cookieHeader)
-      expect(html).not.toBeNull()
-
-      const result = parseOllamaPage(html!)
+      const costTier = parseCostReport(report!)
+      const billingInfo = billing ? parseBillingPage(billing) : null
 
       console.log('\n=== Ollama Usage Data ===')
-      console.log('Plan:', result?.plan)
-      console.log('Overall:', `${result?.overall_percentage}%`)
-      console.log('Tiers:')
-      result?.tiers.forEach(tier => {
-        console.log(`  - ${tier.name}: ${tier.percentage}%`)
-      })
-      console.log('Reset in:', result?.reset_in_hours, 'hours')
+      console.log('Plan:', billingInfo?.plan ?? 'unknown')
+      console.log('Tier:', costTier?.name ?? 'none')
+      console.log('Reset at:', billingInfo?.resetDate ?? 'none')
       console.log('=========================\n')
 
-      expect(result).not.toBeNull()
-      expect(result?.status).toBe('ok')
-      expect(result?.provider).toBe('ollama')
-      expect(result?.tiers.length).toBeGreaterThan(0)
+      expect(costTier).not.toBeNull()
+      expect(billingInfo?.plan).toBeTruthy()
     })
   })
 

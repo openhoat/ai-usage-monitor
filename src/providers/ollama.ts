@@ -1,6 +1,6 @@
 import { getUserAgent } from '../config.js'
 import { fetchWithRetry } from '../helpers/fetch.js'
-import type { Provider, Result, TierUsage, UsageResult } from '../types.js'
+import type { ErrorResult, Provider, Result, TierUsage, UsageResult } from '../types.js'
 
 function buildHeaders(sessionCookie: string): Record<string, string> {
   // Format cookie if needed (add prefix if not present)
@@ -44,6 +44,19 @@ const BALANCE_PATTERNS: Array<{ re: RegExp; name: string }> = [
 const RESET_RE = /class="[^"]*\blocal-time\b[^"]*"[^>]*?data-time="([^"]+)"/i
 // Current (2026-10) structure: reset is plain text ("Refills to $300 in 3 days.").
 const REFILL_RE = /Refills to\s*\$[\d.,]+\s*in\s*(\d+)\s*days?/i
+
+// Current (2026-11) structure: the settings page is a shell that loads its cost
+// report over htmx, plan and renewal live on the billing page.
+const SETTINGS_URL = 'https://ollama.com/settings'
+const COST_REPORT_URL = 'https://ollama.com/settings/usage/report?scope=self'
+const BILLING_URL = 'https://ollama.com/settings/billing'
+
+// Cost report fragment: <dt>Total cost</dt><dd>$57.34</dd>.
+const TOTAL_COST_RE = /<dt[^>]*>\s*Total cost\s*<\/dt>\s*<dd[^>]*>\s*\$([\d.,]+)\s*<\/dd>/i
+// Billing page: "Current plan: Pro" and "Your subscription renews on
+// <span>November 11, 2026</span>.".
+const BILLING_PLAN_RE = /Current plan:\s*(?:<[^>]+>\s*)*([A-Za-z]+)/i
+const RENEWAL_RE = /renews on\s*(?:<[^>]+>\s*)*([A-Z][a-z]+\s+\d{1,2},\s*\d{4})/
 
 /** Return the first capture group of the first matching pattern, or null. */
 function firstCapture(html: string, patterns: RegExp[]): string | null {
@@ -169,70 +182,177 @@ export function parseOllamaPage(html: string): UsageResult | null {
   }
 }
 
+/**
+ * Parse the htmx cost report fragment (2026-11 structure).
+ * The fragment carries the month-to-date cost; there is no percentage anymore
+ * (the account is a subscription billed outside the included usage).
+ */
+export function parseCostReport(html: string): TierUsage | null {
+  const match = TOTAL_COST_RE.exec(html)
+  if (!match) return null
+  return { name: `Monthly cost $${match[1].trim()}`, percentage: 0 }
+}
+
+const MONTHS = [
+  'january',
+  'february',
+  'march',
+  'april',
+  'may',
+  'june',
+  'july',
+  'august',
+  'september',
+  'october',
+  'november',
+  'december',
+]
+
+/** Parse a "November 11, 2026" date as a UTC timestamp (null when invalid). */
+function parseMonthDate(text: string): number | null {
+  const match = /^([A-Za-z]+)\s+(\d{1,2}),\s*(\d{4})$/.exec(text.trim())
+  if (!match) return null
+  const month = MONTHS.indexOf(match[1].toLowerCase())
+  if (month === -1) return null
+  return Date.UTC(Number.parseInt(match[3], 10), month, Number.parseInt(match[2], 10))
+}
+
+export interface BillingInfo {
+  plan: string | null
+  resetDate: string | null
+  resetInHours: number | null
+}
+
+/** Parse the billing page: current plan and subscription renewal date. */
+export function parseBillingPage(html: string): BillingInfo {
+  const planMatch = BILLING_PLAN_RE.exec(html)
+  const renewalMatch = RENEWAL_RE.exec(html)
+
+  const plan = planMatch ? planMatch[1].trim().toLowerCase() : null
+  const renewalTime = renewalMatch ? parseMonthDate(renewalMatch[1]) : null
+
+  if (renewalTime === null) return { plan, resetDate: null, resetInHours: null }
+
+  return {
+    plan,
+    resetDate: new Date(renewalTime).toISOString(),
+    resetInHours: Math.max(0, Math.round((renewalTime - Date.now()) / 3600000)),
+  }
+}
+
+type PageOutcome = { kind: 'ok'; html: string } | { kind: 'error'; result: ErrorResult }
+
+/** Detect a login page served instead of the requested one (expired session). */
+function isLoginPage(html: string): boolean {
+  // Ollama now uses WorkOS AuthKit for auth — detect both old and new login page patterns
+  return (
+    html.includes('action="/signin"') ||
+    html.includes('href="/login"') ||
+    html.includes('href="/signin"') ||
+    html.includes('href="/sign-up') ||
+    html.includes('api/login?provider=') ||
+    html.includes('<title>Sign in</title>') ||
+    html.includes('hosted-authkit') ||
+    html.includes('data-dpl-id="hosted-authkit')
+  )
+}
+
+const AUTH_EXPIRED: ErrorResult = {
+  status: 'error',
+  error_code: 'auth_expired',
+  message: 'Authentication failed. Session cookie may be expired or invalid.',
+}
+
+/** GET an ollama.com page, mapping HTTP and network failures to an error Result. */
+async function fetchPage(url: string, headers: Record<string, string>): Promise<PageOutcome> {
+  try {
+    const res = await fetchWithRetry(url, { headers, redirect: 'follow' })
+
+    if (res.status === 401 || res.status === 403) return { kind: 'error', result: AUTH_EXPIRED }
+    if (!res.ok) {
+      return {
+        kind: 'error',
+        result: {
+          status: 'error',
+          error_code: 'network_error',
+          message: `Unexpected response: HTTP ${res.status}`,
+        },
+      }
+    }
+
+    const html = await res.text()
+    if (isLoginPage(html)) {
+      return {
+        kind: 'error',
+        result: {
+          status: 'error',
+          error_code: 'auth_expired',
+          message: 'Session expired. Please refresh your session cookie from ollama.com.',
+        },
+      }
+    }
+    return { kind: 'ok', html }
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    if (err instanceof DOMException && err.name === 'AbortError') {
+      return {
+        kind: 'error',
+        result: {
+          status: 'error',
+          error_code: 'timeout',
+          message: `Request timed out: ${message}`,
+        },
+      }
+    }
+    return {
+      kind: 'error',
+      result: {
+        status: 'error',
+        error_code: 'network_error',
+        message: `Network error: ${message}`,
+      },
+    }
+  }
+}
+
 export const ollamaProvider: Provider = {
   name: 'ollama',
   async fetchUsage(sessionCookie: string): Promise<Result> {
     const headers = buildHeaders(sessionCookie)
 
-    let html: string
-    try {
-      const res = await fetchWithRetry('https://ollama.com/settings', {
-        headers,
-        redirect: 'follow',
-      })
+    const settings = await fetchPage(SETTINGS_URL, headers)
+    if (settings.kind === 'error') return settings.result
 
-      if (res.status === 401 || res.status === 403) {
-        return {
-          status: 'error',
-          error_code: 'auth_expired',
-          message: 'Authentication failed. Session cookie may be expired or invalid.',
-        }
-      }
-      if (!res.ok) {
-        return {
-          status: 'error',
-          error_code: 'network_error',
-          message: `Unexpected response: HTTP ${res.status}`,
-        }
-      }
+    const report = await fetchPage(COST_REPORT_URL, headers)
+    if (report.kind === 'error') return report.result
 
-      html = await res.text()
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err)
-      if (err instanceof DOMException && err.name === 'AbortError') {
-        return { status: 'error', error_code: 'timeout', message: `Request timed out: ${message}` }
-      }
-      return { status: 'error', error_code: 'network_error', message: `Network error: ${message}` }
-    }
+    const costTier = parseCostReport(report.html)
 
-    // Check if we're actually logged in (login redirect detected)
-    // Ollama now uses WorkOS AuthKit for auth — detect both old and new login page patterns
-    if (
-      html.includes('action="/signin"') ||
-      html.includes('href="/login"') ||
-      html.includes('href="/signin"') ||
-      html.includes('href="/sign-up') ||
-      html.includes('api/login?provider=') ||
-      html.includes('<title>Sign in</title>') ||
-      html.includes('hosted-authkit') ||
-      html.includes('data-dpl-id="hosted-authkit')
-    ) {
+    if (!costTier) {
+      // Pages before 2026-11 carried the usage data inline on /settings.
+      const legacy = parseOllamaPage(settings.html)
+      if (legacy) return legacy
+
+      // Report loaded and authenticated, but no cost could be extracted.
       return {
         status: 'error',
-        error_code: 'auth_expired',
-        message: 'Session expired. Please refresh your session cookie from ollama.com.',
+        error_code: 'parse_error',
+        message: 'Could not extract usage data. The page structure may have changed.',
       }
     }
 
-    // Page loaded and authenticated — attempt to parse usage data
-    const result = parseOllamaPage(html)
-    if (result) return result
+    // Plan and renewal are informative: a billing failure keeps the cost data.
+    const billing = await fetchPage(BILLING_URL, headers)
+    const billingInfo = billing.kind === 'ok' ? parseBillingPage(billing.html) : null
 
-    // Page loaded and authenticated, but data could not be extracted
     return {
-      status: 'error',
-      error_code: 'parse_error',
-      message: 'Could not extract usage data. The page structure may have changed.',
+      status: 'ok',
+      provider: 'ollama',
+      plan: billingInfo?.plan ?? extractPlan(settings.html),
+      tiers: [costTier],
+      overall_percentage: 0,
+      reset_date: billingInfo?.resetDate ?? null,
+      reset_in_hours: billingInfo?.resetInHours ?? null,
     }
   },
 }
