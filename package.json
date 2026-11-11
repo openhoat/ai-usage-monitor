@@ -1,6 +1,6 @@
 {
   "name": "ai-usage-monitor",
-  "version": "1.3.2",
+  "version": "1.4.0",
   "description": "Monitor AI provider usage (Claude, OpenAI, Ollama, OpenCode, OpenRouter) via a web dashboard",
   "keywords": [
     "ai",
