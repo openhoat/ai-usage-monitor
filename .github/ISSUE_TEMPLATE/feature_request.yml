@@ -1,6 +1,6 @@
 name: Feature request
 description: Suggest an idea, an evolution or a new provider.
-title: '[Feature] '
+title: "[Feature] "
 labels: [enhancement]
 body:
   - type: markdown
